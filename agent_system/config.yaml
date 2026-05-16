@@ -1,0 +1,46 @@
+default_model: deepseek-chat
+audit_dir: tracks/
+data_db: funding_rate.db
+
+providers:
+  deepseek:
+    api_key_env: DEEPSEEK_API_KEY
+    base_url: https://api.deepseek.com
+    models: [deepseek-chat, deepseek-reasoner]
+
+binance:
+  api_key_env: BINANCE_API_KEY
+  api_secret_env: BINANCE_API_SECRET
+  use_signed_for_quota: true
+
+mates:
+  trend_multi_tf:
+    model: deepseek-chat
+    temperature: 0.2
+    max_tokens: 1500
+    enabled: true
+    prompt_file: prompts/trend_multi_tf.md
+
+modes:
+  full:
+    enabled_mates: [trend_multi_tf]
+    rounds: 3
+
+scheduler:
+  scan_interval_min: 30
+  tracking_interval_min: 15
+  retrospective_cron: "0 3 * * *"
+  scan_max_candidates: 10
+  scan_min_score: 30
+
+push:
+  server_chan:
+    enabled: false
+    key_env: SERVER_CHAN_KEY
+  cooldown_min: 240
+
+defaults:
+  temperature: 0.3
+  max_tokens: 2000
+  timeout_sec: 30
+  retry_max: 2
