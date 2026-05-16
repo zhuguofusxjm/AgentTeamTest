@@ -25,7 +25,8 @@ def test_unknown_model_raises():
     with pytest.raises(ValueError):
         client.chat(model="unknown-xyz", messages=[])
 
-def test_retry_on_exception():
+def test_retry_on_exception(monkeypatch):
+    monkeypatch.setattr("agent_system.core.llm_client.time.sleep", lambda x: None)
     cfg = {"providers": {"deepseek": {}}, "defaults": {"retry_max": 2, "timeout_sec": 30}}
     mock_provider = MagicMock()
     mock_provider.chat.side_effect = [
