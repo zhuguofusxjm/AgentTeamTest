@@ -1,4 +1,3 @@
-import os
 import pytest
 from agent_system.core.config_loader import load_config, ConfigError
 
@@ -50,3 +49,50 @@ providers:
     cfg = load_config(str(cfg_file))
     with pytest.raises(ConfigError):
         resolve_provider_key(cfg, "deepseek")
+
+def test_enabled_mates_filters_by_both_mate_enabled_and_mode_list(tmp_path):
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("""
+mates:
+  m1: { enabled: true, model: x }
+  m2: { enabled: false, model: x }
+  m3: { enabled: true, model: x }
+modes:
+  full: { enabled_mates: [m1, m2] }
+""")
+    from agent_system.core.config_loader import get_enabled_mates_for_mode
+    cfg = load_config(str(cfg_file))
+    # m2 enabled=false 被过滤; m3 不在 mode list 被过滤; 只剩 m1
+    assert get_enabled_mates_for_mode(cfg, "full") == ["m1"]
+
+def test_enabled_mates_unknown_mode_raises(tmp_path):
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("modes: {full: {enabled_mates: []}}\n")
+    from agent_system.core.config_loader import get_enabled_mates_for_mode
+    cfg = load_config(str(cfg_file))
+    with pytest.raises(ConfigError):
+        get_enabled_mates_for_mode(cfg, "nonexistent")
+
+def test_get_mate_config_unknown_raises(tmp_path):
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("mates: {a: {model: x, enabled: true}}\n")
+    from agent_system.core.config_loader import get_mate_config
+    cfg = load_config(str(cfg_file))
+    with pytest.raises(ConfigError):
+        get_mate_config(cfg, "unknown")
+
+def test_resolve_provider_key_unknown_provider_raises(tmp_path):
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("providers: {}\n")
+    from agent_system.core.config_loader import resolve_provider_key
+    cfg = load_config(str(cfg_file))
+    with pytest.raises(ConfigError):
+        resolve_provider_key(cfg, "unknown")
+
+def test_resolve_provider_key_missing_env_field_raises(tmp_path):
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("providers: {p1: {base_url: x}}\n")
+    from agent_system.core.config_loader import resolve_provider_key
+    cfg = load_config(str(cfg_file))
+    with pytest.raises(ConfigError):
+        resolve_provider_key(cfg, "p1")
