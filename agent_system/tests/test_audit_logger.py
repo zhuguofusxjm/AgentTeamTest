@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 from agent_system.core.audit_logger import AuditLogger
 
 def test_audit_log_call_creates_file(tmp_path):
@@ -35,3 +36,34 @@ def test_log_call_groups_by_round(tmp_path):
     assert len(data["rounds"]) == 2
     assert len(data["rounds"][0]["calls"]) == 2
     assert len(data["rounds"][1]["calls"]) == 1
+
+import pytest
+
+def test_unknown_audit_id_raises(tmp_path):
+    logger = AuditLogger(audit_dir=str(tmp_path))
+    with pytest.raises(ValueError):
+        logger.log_call("ghost", 1, "m", "model", "p", "r", {}, 0)
+    with pytest.raises(ValueError):
+        logger.finalize("ghost", final_card={})
+
+def test_path_injection_sanitized(tmp_path):
+    logger = AuditLogger(audit_dir=str(tmp_path))
+    aid = logger.start_session(prefix="decision", session_key="../../evil")
+    logger.log_call(aid, 1, "m", "x", "p", "r", {}, 0)
+    path = logger.finalize(aid, final_card={})
+    # 文件应在 tmp_path 下,不能逃逸
+    assert str(tmp_path) in path
+    assert ".." not in Path(path).name
+
+def test_concurrent_log_calls(tmp_path):
+    import threading
+    logger = AuditLogger(audit_dir=str(tmp_path))
+    aid = logger.start_session(prefix="decision", session_key="concurrent")
+    def worker(i):
+        logger.log_call(aid, 1, f"m{i}", "x", "p", "r", {"total": 1}, 1)
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    logger.finalize(aid, final_card={})
+    data = json.loads((tmp_path / "decision_concurrent.json").read_text(encoding="utf-8"))
+    assert len(data["rounds"][0]["calls"]) == 20
