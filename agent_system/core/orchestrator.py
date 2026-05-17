@@ -206,7 +206,9 @@ class Orchestrator:
         finally:
             if self.audit and audit_id:
                 try:
-                    self.audit.finalize(audit_id, final_card=card)
+                    audit_path = self.audit.finalize(audit_id, final_card=card)
+                    if isinstance(card, dict) and audit_path:
+                        card["audit_path"] = audit_path
                 except Exception:
                     pass
         return card

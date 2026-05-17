@@ -178,6 +178,8 @@ async function send(text) {
       const result = evt.payload;
       if (result.type === "decision_card") {
         appendMsg("assistant", result.card);
+      } else if (result.type === "follow_up_answer") {
+        appendMsg("assistant", result.message);
       } else {
         appendMsg("assistant", result.message || JSON.stringify(result));
       }
@@ -208,3 +210,35 @@ async function loadDecisions() {
 }
 
 loadDecisions();
+
+// --- Resizable right panel ---
+(function initSplitter() {
+  const splitter = document.getElementById("splitter");
+  if (!splitter) return;
+  const root = document.documentElement;
+  const saved = parseInt(localStorage.getItem("rightPanelWidth") || "0", 10);
+  if (saved > 200 && saved < window.innerWidth - 400) {
+    root.style.setProperty("--right-w", saved + "px");
+  }
+  let dragging = false;
+  splitter.addEventListener("mousedown", (e) => {
+    dragging = true;
+    splitter.classList.add("dragging");
+    document.body.style.cursor = "col-resize";
+    e.preventDefault();
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const newW = window.innerWidth - e.clientX;
+    const clamped = Math.min(Math.max(newW, 220), window.innerWidth - 400);
+    root.style.setProperty("--right-w", clamped + "px");
+  });
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove("dragging");
+    document.body.style.cursor = "";
+    const cur = getComputedStyle(root).getPropertyValue("--right-w").trim();
+    if (cur) localStorage.setItem("rightPanelWidth", parseInt(cur, 10));
+  });
+})();
