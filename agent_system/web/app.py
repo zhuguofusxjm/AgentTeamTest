@@ -77,4 +77,13 @@ def create_app(cfg, chat_runner, audit_dir, db_path):
         )
         return jsonify({"track_id": track_id, "symbol": d.get("symbol"), "direction": direction})
 
+    @app.route("/api/tracks/<int:track_id>", methods=["DELETE"])
+    def cancel_track(track_id):
+        from agent_system.data.tracking_store import get_active_tracks, close_tracked_position
+        active = {t["id"]: t for t in get_active_tracks(db_path)}
+        if track_id not in active:
+            return jsonify({"error": "track not found or already closed"}), 404
+        close_tracked_position(db_path, track_id, reason="manual")
+        return jsonify({"track_id": track_id, "status": "closed"})
+
     return app

@@ -92,3 +92,31 @@ def test_list_tracks_returns_active(client):
     assert len(data) == 1
     assert data[0]["symbol"] == "BTCUSDT"
     assert data[0]["direction"] == "空"
+
+
+def test_cancel_track_closes_active_position(client):
+    c, db = client
+    did = _save_card(db, "ETHUSDT", "多")
+    res = c.post("/api/track", json={"decision_id": did})
+    track_id = res.get_json()["track_id"]
+
+    resp = c.delete(f"/api/tracks/{track_id}")
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "closed"
+    assert get_active_tracks(db) == []
+
+
+def test_cancel_unknown_track_returns_404(client):
+    c, _ = client
+    resp = c.delete("/api/tracks/9999")
+    assert resp.status_code == 404
+
+
+def test_cancel_already_closed_returns_404(client):
+    c, db = client
+    did = _save_card(db, "ETHUSDT", "多")
+    track_id = c.post("/api/track", json={"decision_id": did}).get_json()["track_id"]
+    c.delete(f"/api/tracks/{track_id}")
+    # 第二次再 delete 应当 404
+    resp = c.delete(f"/api/tracks/{track_id}")
+    assert resp.status_code == 404

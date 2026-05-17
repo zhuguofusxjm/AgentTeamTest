@@ -273,12 +273,37 @@ async function loadTracks() {
     ul.innerHTML = list.map(t => {
       const dirCls = t.direction === "多" ? "dir-long" : "dir-short";
       const created = (t.created_at || "").slice(0, 16).replace("T", " ");
-      return `<li>
-        <div><span class="sym">${t.symbol}</span> <span class="${dirCls}">${t.direction}</span></div>
+      return `<li data-track-id="${t.id}">
+        <div><span class="sym">${t.symbol}</span> <span class="${dirCls}">${t.direction}</span>
+          <button class="cancel-track-btn" data-track-id="${t.id}" title="取消跟踪">取消</button></div>
         <div class="meta">入 ${t.entry_price} / 止损 ${t.stop_loss} / 止盈 ${t.take_profit}</div>
         <div class="meta">开始 ${created} | id=${t.id}</div>
       </li>`;
     }).join("");
+    ul.querySelectorAll(".cancel-track-btn").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.trackId;
+        if (!confirm(`确认取消跟踪 #${id}?`)) return;
+        btn.disabled = true;
+        btn.textContent = "处理中";
+        try {
+          const r = await fetch(`/api/tracks/${id}`, {method: "DELETE"});
+          if (r.ok) {
+            loadTracks();
+          } else {
+            const data = await r.json();
+            alert(data.error || "取消失败");
+            btn.disabled = false;
+            btn.textContent = "取消";
+          }
+        } catch (err) {
+          alert("网络错误: " + err);
+          btn.disabled = false;
+          btn.textContent = "取消";
+        }
+      });
+    });
   } catch (e) {
     ul.innerHTML = `<li class="empty">加载失败: ${escapeHtml(String(e))}</li>`;
   }
