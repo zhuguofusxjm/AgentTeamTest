@@ -83,7 +83,7 @@ modes:
     rounds: 2
 
 scheduler:
-  scan_interval_min: 30
+  scan_interval_min: 240
   tracking_interval_min: 15
   retrospective_cron: "0 3 * * *"
   scan_max_candidates: 10
