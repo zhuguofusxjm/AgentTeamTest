@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <title>Agent Team 量化分析</title>
+  <link rel="stylesheet" href="/static/chat.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="left">
+      <h3>最近决策</h3>
+      <ul id="decisions-list"></ul>
+    </aside>
+    <main class="center">
+      <div id="messages"></div>
+      <form id="chat-form">
+        <input id="chat-input" placeholder="例: 帮我分析 ETH 是否有买卖点" autocomplete="off">
+        <button type="submit">发送</button>
+      </form>
+    </main>
+    <aside class="right">
+      <h3>辩论流</h3>
+      <div id="debate-stream"></div>
+    </aside>
+  </div>
+  <script src="/static/chat.js"></script>
+</body>
+</html>
