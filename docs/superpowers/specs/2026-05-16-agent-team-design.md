@@ -1110,3 +1110,90 @@ SERVER_CHAN_KEY=SCT-xxx           # 不设则不推送
 | 扩展 | 改 signals.py | 加 prompt + config 一行 |
 | 学习 | 无 | 决策快照 + 经验聚合 + 检索 |
 | 推送 | 简单消息 | 决策卡片紧凑式 |
+
+
+---
+
+## 十一、实施后的演进 (Phase 6+)
+
+设计文档最初到 Phase 5 收尾。下列改动是上线后用户反馈与体感数据驱动的演进,直接落地到代码,设计大纲不变。
+
+### 11.1 复盘升级 — 过程数据 + 归因
+
+**问题**: 原复盘只看决策卡片 + 最终结果(win/loss),LLM 看不到价格走势和各 Mate 当时的判断,产出的 lesson 信息密度低。
+
+**改动**:
+- 新增 `core/decision_metrics.py`,从决策期间真实 K 线算 MFE / MAE / time_to_close / path_shape (direct / v_reversal / false_breakout / choppy)
+- 新增 `core/audit_reader.py`,从 audit JSON 提取 11 位 Mate 第一轮的 view+confidence+evidence
+- retro prompt 改写为归因任务: 哪些 Mate 在该场景可信、哪些误导、止损是否过紧、是否假突破
+- LLM 输出新增 `mate_attribution` 字段 (`{mate: trustworthy/neutral/misleading}`),为后续 Mate 校准回路打基础
+- `update_experience` lesson 改为追加而非覆盖,带日期 + 样本统计标记
+- 新组样本不足 3 条时跳过,避免单样本噪声;已有组累加更新
+
+**修复**: `decision_status_tracker._highest_low` 之前用 `limit=200` 取最近 K 线,与决策创建时间无关,会把决策诞生前的价格波动误判成胜负。改为 `start_time = created_at` 锚定窗口。
+
+### 11.2 Token 用量优化 (94% 节省)
+
+**问题**: 每个 Mate 都把整个 DataPack(~17 万字符 ≈ 12 万 tokens)灌进 prompt,11 Mate × 12 万 = **130 万 tokens/次**,单次成本约 0.65 元。
+
+**改动**:
+- `BaseMate.select_fields(data_pack)` 钩子,默认返回原 pack 保持兼容
+- 每个具体 Mate override,只取自己真正会读的字段(借助 `core/data_slice.py` 工具)
+- `render_prompt` 用 `sort_keys=True` 让 JSON 序列化字节稳定,有利于 prompt cache 命中
+- DeepSeekProvider 把 `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` 带回 audit,便于监控
+
+**实测 (lean 模式 ETHUSDT)**:
+- in tokens 130 万 → 7.1 万 (降 **94.5%**)
+- 单次成本 ~0.65 元 → ~0.037 元
+- 缓存命中: 每个 Mate 768 tokens (公共 system prompt 前缀)
+
+**Mate 切片大小**: long_short_compare/experience < 0.5 KB; funding_rate/liquidity/position_mgr/decision_lead ~ 3 KB; smart_money/volatility/macro_sentiment 5-12 KB; red_team 29 KB; trend_multi_tf 42 KB (要 K 线序列)。
+
+### 11.3 多轮对话
+
+**问题**: 原系统每次对话独立,follow-up 提问只能再发起完整 11 Mate 圆桌。用户问"几个分析师参与?各自结论?"这种问题没必要重新跑。
+
+**改动**:
+- intent 解析新增 `follow_up` 类别,prompt 带最近 6 条对话历史辅助判断
+- `chat_runner` 新增 `_answer_follow_up` 分支:从 session 找最近 decision_id,读 audit JSON 中各 Mate 的 round-1 view,LLM 自然语言回答
+- orchestrator finalize 时把 audit_path 回填到 card,让 chat_runner 能落库
+
+用户提问举例:
+- "你们有几个分析师参与了这次分析?各自结论?"
+- "为什么这样判断?具体依据是什么?"
+- "蒋军反驳的核心是什么?"
+- "如果价格反弹到 X 你们会怎么调整?"
+
+### 11.4 Web 体验
+
+**右侧辩论流**:
+- Orchestrator 新增 `on_event` 回调,在每个阶段 emit 事件: `round_1_start` / `mate_done` / `rebuttal_start` / `rebuttal_done` / `response_done` / `round_3_start`
+- chat_runner 把这些事件透传到 SSE
+- 前端 chat.js 渲染成可点击的 mate-card (中文名 + view 色块 + confidence + 第一条 evidence),点击展开完整 JSON
+
+**右侧 tab 切换**:
+- 顶部 tab: **辩论流** / **分析师团队**
+- 团队 tab 显示 11 位的 `职责 / 关注 / 信号 / 输出` 四栏,disabled 半透明
+- API: `GET /api/team` 返回所有 mate 的中文名 + 启用状态 + 模型 + 职责
+
+**可拖动宽度**: 中间和右侧之间加 splitter,localStorage 记忆用户偏好。
+
+### 11.5 11 位分析师中文角色名
+
+backend mate_id 不变(数据库/audit/config 仍用英文 id 保持稳定),前端展示和 follow_up LLM prompt 用中文角色名:
+
+| mate_id | 中文角色 |
+|---|---|
+| trend_multi_tf | 周期师 |
+| funding_rate | 费率官 |
+| smart_money | 大户雷达 |
+| long_short_compare | 多空裁 |
+| volatility | 波动官 |
+| experience | 复盘官 |
+| red_team | 投资风险师 |
+| macro_sentiment | 宏观官 |
+| liquidity | 水位官 |
+| position_mgr | 仓位管家 |
+| decision_lead | 决策长 |
+
+映射在 `agent_system/mates/display_names.py` (后端) 和 `agent_system/web/static/chat.js` (前端) 两处保持一致。
