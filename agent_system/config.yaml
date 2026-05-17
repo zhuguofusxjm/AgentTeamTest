@@ -20,11 +20,70 @@ mates:
     max_tokens: 1500
     enabled: true
     prompt_file: prompts/trend_multi_tf.md
+  funding_rate:
+    model: deepseek-chat
+    temperature: 0.2
+    max_tokens: 1000
+    enabled: true
+    prompt_file: prompts/funding_rate.md
+  smart_money:
+    model: deepseek-chat
+    enabled: true
+    prompt_file: prompts/smart_money.md
+  long_short_compare:
+    model: deepseek-chat
+    enabled: true
+    prompt_file: prompts/long_short_compare.md
+  volatility:
+    model: deepseek-chat
+    enabled: true
+    prompt_file: prompts/volatility.md
+  experience:
+    model: deepseek-chat
+    temperature: 0.3
+    enabled: false
+    prompt_file: prompts/experience.md
+  red_team:
+    model: deepseek-chat
+    temperature: 0.5
+    enabled: true
+    prompt_file: prompts/red_team.md
+  macro_sentiment:
+    model: deepseek-chat
+    enabled: true
+    prompt_file: prompts/macro_sentiment.md
+  liquidity:
+    model: deepseek-chat
+    enabled: true
+    prompt_file: prompts/liquidity.md
+  position_mgr:
+    model: deepseek-chat
+    temperature: 0.1
+    enabled: true
+    prompt_file: prompts/position_mgr.md
+  decision_lead:
+    model: deepseek-chat
+    temperature: 0.2
+    enabled: true
+    prompt_file: prompts/decision_lead.md
 
 modes:
   full:
-    enabled_mates: [trend_multi_tf]
+    enabled_mates: [trend_multi_tf, funding_rate, smart_money,
+                    long_short_compare, volatility, experience,
+                    red_team, macro_sentiment, liquidity,
+                    position_mgr]
     rounds: 3
+  lean:
+    enabled_mates: [trend_multi_tf, funding_rate, smart_money,
+                    long_short_compare, red_team, position_mgr,
+                    experience]
+    rounds: 2
+  tracking:
+    enabled_mates: [trend_multi_tf, funding_rate, smart_money,
+                    long_short_compare, red_team, position_mgr,
+                    experience]
+    rounds: 2
 
 scheduler:
   scan_interval_min: 30
