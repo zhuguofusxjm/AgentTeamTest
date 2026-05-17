@@ -20,8 +20,16 @@
     </main>
     <div class="splitter" id="splitter"></div>
     <aside class="right" id="right-panel">
-      <h3>辩论流</h3>
-      <div id="debate-stream"></div>
+      <div class="right-tabs">
+        <button class="tab-btn active" data-tab="debate">辩论流</button>
+        <button class="tab-btn" data-tab="team">分析师团队</button>
+      </div>
+      <div id="tab-debate" class="tab-pane active">
+        <div id="debate-stream"></div>
+      </div>
+      <div id="tab-team" class="tab-pane">
+        <div id="team-list"></div>
+      </div>
     </aside>
   </div>
   <script src="/static/chat.js"></script>

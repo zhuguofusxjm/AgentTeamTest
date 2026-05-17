@@ -43,7 +43,7 @@ const MATE_DISPLAY = {
   "long_short_compare": "多空裁",
   "volatility": "波动官",
   "experience": "复盘官",
-  "red_team": "蒋军",
+  "red_team": "投资风险师",
   "macro_sentiment": "宏观官",
   "liquidity": "水位官",
   "position_mgr": "仓位管家",
@@ -114,7 +114,7 @@ function renderRebuttalCard(payload) {
   head.className = "mate-head";
   head.innerHTML = `
     <span class="mate-round">R2</span>
-    <span class="mate-name">蒋军 反驳</span>
+    <span class="mate-name">投资风险师 反驳</span>
     <span class="mate-view short">vs ${escapeHtml(payload.majority || "?")}</span>
     <span class="mate-arrow">▸</span>
   `;
@@ -227,7 +227,48 @@ async function loadDecisions() {
 
 loadDecisions();
 
-// --- Resizable right panel ---
+// --- Right panel tabs ---
+(function initTabs() {
+  const btns = document.querySelectorAll(".tab-btn");
+  const panes = document.querySelectorAll(".tab-pane");
+  btns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.tab;
+      btns.forEach(b => b.classList.toggle("active", b === btn));
+      panes.forEach(p => p.classList.toggle("active", p.id === `tab-${target}`));
+      if (target === "team") loadTeam();
+    });
+  });
+})();
+
+let teamLoaded = false;
+async function loadTeam() {
+  if (teamLoaded) return;
+  const container = document.getElementById("team-list");
+  if (!container) return;
+  try {
+    const r = await fetch("/api/team");
+    const list = await r.json();
+    container.innerHTML = list.map(m => `
+      <div class="team-card ${m.enabled ? "" : "disabled"}">
+        <div class="team-card-head">
+          <span class="team-card-name">${escapeHtml(m.name)}</span>
+          <span class="team-card-id">${escapeHtml(m.mate)}</span>
+          <span class="team-card-status ${m.enabled ? "" : "off"}">${m.enabled ? "启用" : "停用"}</span>
+        </div>
+        <dl>
+          <dt>职责</dt><dd>${escapeHtml(m.role || "")}</dd>
+          <dt>关注</dt><dd>${escapeHtml(m.focus || "")}</dd>
+          <dt>信号</dt><dd>${escapeHtml(m.signals || "")}</dd>
+          <dt>输出</dt><dd>${escapeHtml(m.output || "")}</dd>
+        </dl>
+      </div>
+    `).join("");
+    teamLoaded = true;
+  } catch (e) {
+    container.innerHTML = `<div style="color:#dc2626">加载失败: ${escapeHtml(String(e))}</div>`;
+  }
+}
 (function initSplitter() {
   const splitter = document.getElementById("splitter");
   if (!splitter) return;

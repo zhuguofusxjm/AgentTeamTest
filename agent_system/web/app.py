@@ -22,4 +22,20 @@ def create_app(cfg, chat_runner, audit_dir, db_path):
         from agent_system.data.decisions_store import list_recent_decisions
         return jsonify(list_recent_decisions(db_path, limit=50))
 
+    @app.route("/api/team")
+    def team():
+        from agent_system.mates.display_names import DISPLAY_NAMES, PROFILES
+        mates_cfg = cfg.get("mates", {})
+        out = []
+        for mate_id in DISPLAY_NAMES.keys():
+            mc = mates_cfg.get(mate_id, {})
+            out.append({
+                "mate": mate_id,
+                "name": DISPLAY_NAMES.get(mate_id, mate_id),
+                "enabled": bool(mc.get("enabled", False)),
+                "model": mc.get("model"),
+                **PROFILES.get(mate_id, {}),
+            })
+        return jsonify(out)
+
     return app
