@@ -221,3 +221,42 @@ button { padding: 8px 16px; background: #2563eb; color: #fff; border: 0; border-
 }
 body.drawer-open .drawer { transform: translateX(0); }
 body.drawer-open #drawer-toggle { right: 300px; }
+
+.card-actions {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.track-btn {
+  background: #16a34a;
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.track-btn:hover { background: #15803d; }
+.track-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+.track-status { font-size: 11px; color: #64748b; }
+.track-status.ok { color: #15803d; }
+.track-status.err { color: #b91c1c; }
+
+#tracks-list { list-style: none; padding: 0; }
+#tracks-list li {
+  padding: 8px;
+  margin-bottom: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #f9fafb;
+  font-size: 12px;
+  line-height: 1.6;
+}
+#tracks-list li .sym { font-weight: bold; font-size: 13px; }
+#tracks-list li .dir-long { color: #15803d; }
+#tracks-list li .dir-short { color: #b91c1c; }
+#tracks-list li .meta { color: #64748b; font-size: 11px; }
+#tracks-list .empty { color: #94a3b8; padding: 8px 0; font-size: 12px; }

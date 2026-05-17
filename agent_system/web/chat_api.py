@@ -4,11 +4,11 @@ import threading
 import uuid
 from flask import Blueprint, request, jsonify, Response
 
-bp = Blueprint("chat", __name__)
-
 _session_queues = {}
 
 def init_chat_api(chat_runner):
+    bp = Blueprint("chat", __name__)
+
     @bp.route("/api/chat", methods=["POST"])
     def chat():
         body = request.get_json(force=True)

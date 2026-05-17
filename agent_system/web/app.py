@@ -1,5 +1,6 @@
 from pathlib import Path
-from flask import Flask, render_template, jsonify
+import json
+from flask import Flask, render_template, jsonify, request
 
 def create_app(cfg, chat_runner, audit_dir, db_path):
     template_dir = Path(__file__).parent / "templates"
@@ -37,5 +38,43 @@ def create_app(cfg, chat_runner, audit_dir, db_path):
                 **PROFILES.get(mate_id, {}),
             })
         return jsonify(out)
+
+    @app.route("/api/tracks")
+    def list_tracks():
+        from agent_system.data.tracking_store import get_active_tracks
+        return jsonify(get_active_tracks(db_path))
+
+    @app.route("/api/track", methods=["POST"])
+    def create_track():
+        body = request.get_json(force=True) or {}
+        decision_id = body.get("decision_id")
+        if not decision_id:
+            return jsonify({"error": "decision_id required"}), 400
+        from agent_system.data.decisions_store import get_decision
+        from agent_system.data.tracking_store import add_tracked_position, get_active_tracks
+        d = get_decision(db_path, decision_id)
+        if not d:
+            return jsonify({"error": "decision not found"}), 404
+        card = json.loads(d.get("card_json") or "{}")
+        direction = card.get("direction") or d.get("direction")
+        if direction not in ("多", "空"):
+            return jsonify({"error": f"direction='{direction}' 不可跟踪 (仅多/空)"}), 400
+        for t in get_active_tracks(db_path):
+            if t.get("symbol") == d.get("symbol"):
+                return jsonify({
+                    "error": f"{d.get('symbol')} 已有活跃跟踪 (id={t.get('id')})",
+                    "track_id": t.get("id"),
+                }), 409
+        track_id = add_tracked_position(
+            db_path,
+            symbol=d.get("symbol"),
+            direction=direction,
+            entry_price=card.get("entry_price"),
+            stop_loss=card.get("stop_loss"),
+            take_profit=card.get("take_profit"),
+            entry_signals=f"decision_{decision_id}",
+            notes=card.get("execution_plan", "")[:500],
+        )
+        return jsonify({"track_id": track_id, "symbol": d.get("symbol"), "direction": direction})
 
     return app

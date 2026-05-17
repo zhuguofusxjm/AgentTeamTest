@@ -2,9 +2,9 @@ import json
 from pathlib import Path
 from flask import Blueprint, jsonify, current_app
 
-bp = Blueprint("debate", __name__)
-
 def init_debate_api(audit_dir):
+    bp = Blueprint("debate", __name__)
+
     @bp.route("/api/debate/<int:decision_id>")
     def get_debate(decision_id):
         from agent_system.data.decisions_store import get_decision

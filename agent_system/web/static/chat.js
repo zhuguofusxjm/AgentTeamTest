@@ -22,6 +22,7 @@ function renderCard(card) {
   const root = document.createElement("div");
   root.className = "card";
   const dirClass = card.direction === "多" ? "long" : card.direction === "空" ? "short" : "wait";
+  const canTrack = card.decision_id && (card.direction === "多" || card.direction === "空");
   root.innerHTML = `
     <div class="dir ${dirClass}">${card.symbol || ""} ${card.direction || ""} (信心 ${card.confidence ?? "-"})</div>
     <div><b>入场:</b> ${card.entry_price ?? "-"} (zone: ${JSON.stringify(card.entry_zone || [])})</div>
@@ -30,7 +31,40 @@ function renderCard(card) {
     <div><b>依据:</b><ul>${(card.key_evidence || []).map(e => `<li>${e}</li>`).join("")}</ul></div>
     <div><b>风险:</b><ul>${(card.key_risks || []).map(r => `<li>${r}</li>`).join("")}</ul></div>
     <div><b>计划:</b> ${card.execution_plan || ""}</div>
+    ${canTrack ? `<div class="card-actions"><button class="track-btn" data-decision-id="${card.decision_id}">开始跟踪此持仓</button><span class="track-status"></span></div>` : ""}
   `;
+  if (canTrack) {
+    const btn = root.querySelector(".track-btn");
+    const status = root.querySelector(".track-status");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "提交中...";
+      try {
+        const r = await fetch("/api/track", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({decision_id: card.decision_id}),
+        });
+        const data = await r.json();
+        if (r.ok) {
+          btn.textContent = `已跟踪 (id=${data.track_id})`;
+          status.textContent = "可在右侧抽屉查看";
+          status.className = "track-status ok";
+          if (document.body.classList.contains("drawer-open")) loadTracks();
+        } else {
+          btn.disabled = false;
+          btn.textContent = "开始跟踪此持仓";
+          status.textContent = data.error || "提交失败";
+          status.className = "track-status err";
+        }
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "开始跟踪此持仓";
+        status.textContent = "网络错误: " + e;
+        status.className = "track-status err";
+      }
+    });
+  }
   return root;
 }
 
@@ -226,6 +260,30 @@ async function loadDecisions() {
   ).join("");
 }
 
+async function loadTracks() {
+  const ul = document.getElementById("tracks-list");
+  if (!ul) return;
+  try {
+    const r = await fetch("/api/tracks");
+    const list = await r.json();
+    if (!list.length) {
+      ul.innerHTML = '<li class="empty">无活跃跟踪</li>';
+      return;
+    }
+    ul.innerHTML = list.map(t => {
+      const dirCls = t.direction === "多" ? "dir-long" : "dir-short";
+      const created = (t.created_at || "").slice(0, 16).replace("T", " ");
+      return `<li>
+        <div><span class="sym">${t.symbol}</span> <span class="${dirCls}">${t.direction}</span></div>
+        <div class="meta">入 ${t.entry_price} / 止损 ${t.stop_loss} / 止盈 ${t.take_profit}</div>
+        <div class="meta">开始 ${created} | id=${t.id}</div>
+      </li>`;
+    }).join("");
+  } catch (e) {
+    ul.innerHTML = `<li class="empty">加载失败: ${escapeHtml(String(e))}</li>`;
+  }
+}
+
 // --- 最近决策抽屉 (默认收起,点击 toggle 打开) ---
 (function initDrawer() {
   const toggle = document.getElementById("drawer-toggle");
@@ -233,7 +291,10 @@ async function loadDecisions() {
   toggle.addEventListener("click", () => {
     const isOpen = document.body.classList.toggle("drawer-open");
     toggle.textContent = isOpen ? "收起 ▶" : "最近决策";
-    if (isOpen) loadDecisions();
+    if (isOpen) {
+      loadTracks();
+      loadDecisions();
+    }
   });
 })();
 
