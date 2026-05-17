@@ -14,7 +14,48 @@ MATE_CLASSES = {}
 
 def _register_mate_classes():
     from agent_system.mates.trend_multi_tf import TrendMultiTfMate
-    MATE_CLASSES["trend_multi_tf"] = TrendMultiTfMate
+    from agent_system.mates.funding_rate import FundingRateMate
+    from agent_system.mates.smart_money import SmartMoneyMate
+    from agent_system.mates.long_short_compare import LongShortCompareMate
+    from agent_system.mates.volatility import VolatilityMate
+    from agent_system.mates.experience import ExperienceMate
+    from agent_system.mates.red_team import RedTeamMate
+    from agent_system.mates.macro_sentiment import MacroSentimentMate
+    from agent_system.mates.liquidity import LiquidityMate
+    from agent_system.mates.position_mgr import PositionMgrMate
+    from agent_system.mates.decision_lead import DecisionLeadMate
+    MATE_CLASSES.update({
+        "trend_multi_tf": TrendMultiTfMate,
+        "funding_rate": FundingRateMate,
+        "smart_money": SmartMoneyMate,
+        "long_short_compare": LongShortCompareMate,
+        "volatility": VolatilityMate,
+        "experience": ExperienceMate,
+        "red_team": RedTeamMate,
+        "macro_sentiment": MacroSentimentMate,
+        "liquidity": LiquidityMate,
+        "position_mgr": PositionMgrMate,
+        "decision_lead": DecisionLeadMate,
+    })
+
+def _build_orchestrator(cfg, llm, prompts_dir, audit_dir):
+    from agent_system.core.orchestrator import Orchestrator
+    from agent_system.core.audit_logger import AuditLogger
+    audit = AuditLogger(audit_dir=audit_dir)
+    mates = {}
+    red_team = None
+    decision_lead = None
+    for name, cls in MATE_CLASSES.items():
+        mate_cfg = get_mate_config(cfg, name)
+        instance = cls(name=name, llm_client=llm, mate_cfg=mate_cfg, prompts_dir=prompts_dir)
+        if name == "red_team":
+            red_team = instance
+        elif name == "decision_lead":
+            decision_lead = instance
+        else:
+            mates[name] = instance
+    return Orchestrator(cfg=cfg, llm_client=llm, mates=mates, red_team=red_team,
+                        decision_lead=decision_lead, audit_logger=audit)
 
 def _build_llm_client(cfg):
     providers = {}
@@ -35,26 +76,32 @@ def cmd_dry_run(args):
     cfg = load_config(args.config)
     llm = _build_llm_client(cfg)
     binance = _build_binance(cfg)
+    prompts_dir = str(Path(args.config).parent / "prompts")
+    audit_dir = cfg.get("audit_dir", "tracks/")
 
     print(f"[1/3] Fetching data for {args.symbol}...")
     pack = build_pack(args.symbol, binance=binance, peer_symbols=args.peers or [])
-    print(f"  -> tags: {pack['tags']}")
-    print(f"  -> price_now: {pack['price_now']}")
+    print(f"  -> tags: {pack['tags']}, price_now: {pack['price_now']}")
 
     if args.mate:
-        print(f"[2/3] Running mate '{args.mate}'...")
         mate_cfg = get_mate_config(cfg, args.mate)
         if args.model:
             mate_cfg["model"] = args.model
-        prompts_dir = Path(args.config).parent / "prompts"
         cls = MATE_CLASSES.get(args.mate)
         if cls is None:
-            print(f"ERROR: Mate '{args.mate}' not registered. Available: {list(MATE_CLASSES.keys())}")
+            print(f"ERROR: Mate '{args.mate}' not registered.")
             sys.exit(1)
-        mate = cls(name=args.mate, llm_client=llm, mate_cfg=mate_cfg, prompts_dir=str(prompts_dir))
+        mate = cls(name=args.mate, llm_client=llm, mate_cfg=mate_cfg, prompts_dir=prompts_dir)
+        print(f"[2/3] Running mate '{args.mate}'...")
         result = mate.run(pack)
         print("[3/3] Result:")
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.mode:
+        orch = _build_orchestrator(cfg, llm, prompts_dir, audit_dir)
+        print(f"[2/3] Running orchestrator mode='{args.mode}'...")
+        card = orch.run(symbol=args.symbol, mode=args.mode, data_pack=pack)
+        print("[3/3] Decision card:")
+        print(json.dumps(card, ensure_ascii=False, indent=2))
     else:
         print("Provide --mate or --mode")
 
