@@ -1,10 +1,11 @@
 import sys
 from agent_system.core.config_loader import load_config
-from agent_system.data.db import get_conn
+from agent_system.data.db import get_conn, init_new_tables
 
 def main():
     cfg = load_config("agent_system/config.yaml")
     db = cfg["data_db"]
+    init_new_tables(db)  # 兜底,确保表存在
     conn = get_conn(db)
     n_exp = conn.execute("SELECT COUNT(*) FROM experiences").fetchone()[0]
     n_dec = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
