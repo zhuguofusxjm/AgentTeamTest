@@ -92,6 +92,48 @@ def test_intent_prompt_includes_recent_history(tmp_path):
     assert "之前的回复" in sent
 
 
+def test_follow_up_translates_mate_ids_to_display_names(tmp_path):
+    """follow_up 发给 LLM 的 prompt 必须用中文角色名,不带英文 mate id"""
+    db = str(tmp_path / "t.db")
+    init_new_tables(db)
+    sid = "s_translate"
+    # 写一份 audit JSON 含 trend_multi_tf / red_team 两个 round-1 输出
+    audit = tmp_path / "audit.json"
+    audit.write_text(json.dumps({
+        "rounds": [{
+            "round": 1, "calls": [
+                {"mate": "trend_multi_tf",
+                 "response": json.dumps({"view":"空","confidence":75,"evidence":["e1"]})},
+                {"mate": "red_team",
+                 "response": json.dumps({"view":"空","confidence":70,"evidence":["r1"]})},
+            ]
+        }]
+    }, ensure_ascii=False), encoding="utf-8")
+
+    from agent_system.data.decisions_store import save_decision
+    did = save_decision(db, "ETHUSDT", "chat",
+                        {"direction":"空","entry_price":100,"stop_loss":105,"take_profit":90,
+                         "confidence":70,"key_evidence":[],"key_risks":[]},
+                        ["funding=normal"], str(audit))
+    save_message(db, sid, "user", "之前问过 ETHUSDT")
+    save_message(db, sid, "assistant", "{}", decision_id=did)
+
+    llm = _mock_llm(
+        intent_response={"intent": "follow_up", "symbol": None, "extra": {}},
+        follow_up_text="蒋军认为有风险...",
+    )
+    runner = _build_runner(db, llm)
+    runner.handle_message(sid, "为什么这样判断?")
+
+    follow_up_prompt = llm.chat.call_args_list[1].kwargs["messages"][0]["content"]
+    # mate id 不应出现在 follow_up prompt 里
+    assert "trend_multi_tf" not in follow_up_prompt
+    assert "red_team" not in follow_up_prompt
+    # 中文角色名应出现
+    assert "周期师" in follow_up_prompt
+    assert "蒋军" in follow_up_prompt
+
+
 def test_single_analysis_still_works(tmp_path):
     db = str(tmp_path / "t.db")
     init_new_tables(db)

@@ -36,6 +36,21 @@ function renderCard(card) {
 
 const VIEW_CLASS = {"多": "long", "空": "short", "观望": "wait"};
 
+const MATE_DISPLAY = {
+  "trend_multi_tf": "周期师",
+  "funding_rate": "费率官",
+  "smart_money": "大户雷达",
+  "long_short_compare": "多空裁",
+  "volatility": "波动官",
+  "experience": "复盘官",
+  "red_team": "蒋军",
+  "macro_sentiment": "宏观官",
+  "liquidity": "水位官",
+  "position_mgr": "仓位管家",
+  "decision_lead": "决策长",
+};
+function mateName(id) { return MATE_DISPLAY[id] || id; }
+
 function escapeHtml(s) {
   if (s == null) return "";
   return String(s).replace(/[&<>"']/g, c => ({
@@ -51,13 +66,13 @@ function renderMateCard(stage, payload) {
   const cls = VIEW_CLASS[view] || "wait";
   const evidence = payload.evidence_lead ?? "(无)";
   const roundLabel = payload.round ? `R${payload.round}` : "";
-  const mateName = payload.mate || "?";
+  const mateLabel = mateName(payload.mate || "?");
 
   const head = document.createElement("div");
   head.className = "mate-head";
   head.innerHTML = `
     <span class="mate-round">${roundLabel}</span>
-    <span class="mate-name">${escapeHtml(mateName)}</span>
+    <span class="mate-name">${escapeHtml(mateLabel)}</span>
     <span class="mate-view ${cls}">${escapeHtml(view)}</span>
     <span class="mate-conf">${escapeHtml(String(conf))}</span>
     <span class="mate-arrow">▸</span>
@@ -99,7 +114,7 @@ function renderRebuttalCard(payload) {
   head.className = "mate-head";
   head.innerHTML = `
     <span class="mate-round">R2</span>
-    <span class="mate-name">red_team 反驳</span>
+    <span class="mate-name">蒋军 反驳</span>
     <span class="mate-view short">vs ${escapeHtml(payload.majority || "?")}</span>
     <span class="mate-arrow">▸</span>
   `;
@@ -131,7 +146,8 @@ function appendStreamEvent(evt) {
   } else if (stage === "orchestrator_start") {
     streamEl.appendChild(renderPhaseHeader("圆桌开始", `${payload.symbol} mode=${payload.mode}`));
   } else if (stage === "round_1_start") {
-    streamEl.appendChild(renderPhaseHeader("第 1 轮 独立分析", (payload.mates || []).join(", ")));
+    const names = (payload.mates || []).map(mateName).join(", ");
+    streamEl.appendChild(renderPhaseHeader("第 1 轮 独立分析", names));
   } else if (stage === "mate_done") {
     streamEl.appendChild(renderMateCard(stage, payload));
   } else if (stage === "rebuttal_start") {
