@@ -26,15 +26,24 @@ class BaseMate:
                 "output_schema": (shared_dir / "output_schema.md").read_text(encoding="utf-8"),
             }
 
+    def select_fields(self, data_pack: dict) -> dict:
+        """Subclasses override to return a slimmed view of the DataPack.
+
+        Default returns the full pack — preserves backward compatibility
+        for Mates that haven't been sliced yet.
+        """
+        return data_pack
+
     def render_prompt(self, data_pack: dict, extra_ctx: dict = None) -> str:
         self._load()
         rendered = self._template
         for k, v in self._shared.items():
             rendered = rendered.replace("{{ " + k + " }}", v)
-        rendered = rendered.replace("{{ data_pack_json }}", json.dumps(data_pack, ensure_ascii=False, default=str))
+        sliced = self.select_fields(data_pack)
+        rendered = rendered.replace("{{ data_pack_json }}", json.dumps(sliced, ensure_ascii=False, default=str, sort_keys=True))
         if extra_ctx:
             for k, v in extra_ctx.items():
-                rendered = rendered.replace("{{ " + k + " }}", json.dumps(v, ensure_ascii=False, default=str) if not isinstance(v, str) else v)
+                rendered = rendered.replace("{{ " + k + " }}", json.dumps(v, ensure_ascii=False, default=str, sort_keys=True) if not isinstance(v, str) else v)
         return rendered
 
     def _parse_json(self, text: str) -> dict:

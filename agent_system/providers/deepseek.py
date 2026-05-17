@@ -31,6 +31,8 @@ class DeepSeekProvider(BaseProvider):
                 "prompt_tokens": data.get("usage", {}).get("prompt_tokens", 0),
                 "completion_tokens": data.get("usage", {}).get("completion_tokens", 0),
                 "total_tokens": data.get("usage", {}).get("total_tokens", 0),
+                "prompt_cache_hit_tokens": data.get("usage", {}).get("prompt_cache_hit_tokens", 0),
+                "prompt_cache_miss_tokens": data.get("usage", {}).get("prompt_cache_miss_tokens", 0),
             },
             model=model,
             raw=data,

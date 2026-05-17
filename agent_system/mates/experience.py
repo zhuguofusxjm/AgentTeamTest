@@ -6,6 +6,12 @@ class ExperienceMate(BaseMate):
         super().__init__(*args, **kwargs)
         self.db_path = db_path
 
+    def select_fields(self, data_pack):
+        return {
+            "symbol": data_pack.get("symbol"),
+            "tags": data_pack.get("tags") or [],
+        }
+
     def run(self, data_pack, extra_ctx=None, audit_logger=None, audit_id=None, round_num=1):
         tags = data_pack.get("tags", [])
         retrieved = search_by_tags(self.db_path, query_tags=tags, limit=5, days=90) if self.db_path else []
