@@ -20,6 +20,8 @@ from agent_system.runners.scan_runner import ScanRunner
 from agent_system.runners.tracking_runner import TrackingRunner
 from agent_system.push.server_chan import ServerChanPush
 from agent_system.web.app import create_app
+from agent_system.runners.decision_status_tracker import DecisionStatusTracker
+from agent_system.runners.retrospective_runner import RetrospectiveRunner
 
 CONFIG_PATH = "agent_system/config.yaml"
 _stop_flag = threading.Event()
@@ -102,6 +104,32 @@ def main():
                      daemon=True).start()
     threading.Thread(target=_tracking_loop, args=(tracking_runner, sched.get("tracking_interval_min", 15)),
                      daemon=True).start()
+
+    status_tracker = DecisionStatusTracker(db_path=db_path, binance=binance, expire_days=7)
+    def _status_loop():
+        while not _stop_flag.is_set():
+            try:
+                status_tracker.run_once()
+            except Exception as e:
+                print(f"[status_loop] {e}")
+            _stop_flag.wait(3600)
+    threading.Thread(target=_status_loop, daemon=True).start()
+
+    retro_runner = RetrospectiveRunner(cfg=cfg, llm_client=llm, db_path=db_path)
+    last_retro_date = [None]
+    def _retro_loop():
+        from datetime import datetime as dt
+        while not _stop_flag.is_set():
+            now = dt.now()
+            today = now.strftime("%Y-%m-%d")
+            if now.hour == 3 and last_retro_date[0] != today:
+                try:
+                    retro_runner.run_daily()
+                    last_retro_date[0] = today
+                except Exception as e:
+                    print(f"[retro_loop] {e}")
+            _stop_flag.wait(600)
+    threading.Thread(target=_retro_loop, daemon=True).start()
 
     app = create_app(cfg, chat_runner, audit_dir, db_path)
 
