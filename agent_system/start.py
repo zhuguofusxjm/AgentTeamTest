@@ -93,7 +93,7 @@ def main():
             _stop_flag.wait(3600)
     threading.Thread(target=_status_loop, daemon=True).start()
 
-    retro_runner = RetrospectiveRunner(cfg=cfg, llm_client=llm, db_path=db_path)
+    retro_runner = RetrospectiveRunner(cfg=cfg, llm_client=llm, db_path=db_path, binance=binance)
     last_retro_date = [None]
     def _retro_loop():
         from datetime import datetime as dt

@@ -62,8 +62,9 @@ def cmd_dry_run(args):
 def cmd_retro(args):
     cfg = load_config(args.config)
     llm = _build_llm_client(cfg)
+    binance = _build_binance(cfg)
     from agent_system.runners.retrospective_runner import RetrospectiveRunner
-    runner = RetrospectiveRunner(cfg=cfg, llm_client=llm, db_path=cfg["data_db"])
+    runner = RetrospectiveRunner(cfg=cfg, llm_client=llm, db_path=cfg["data_db"], binance=binance)
     runner.run_daily()
     print("done")
 
