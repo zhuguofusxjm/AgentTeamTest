@@ -23,6 +23,27 @@ ROUND_2_RESPONSE_PROMPT = """你是 {mate_name} 分析师。第 1 轮你的判�
 
 只输出 JSON,不要 Markdown,不要其他文字。"""
 
+
+def _safe_emit(on_event, name, payload):
+    if on_event is None:
+        return
+    try:
+        on_event(name, payload)
+    except Exception:
+        pass
+
+
+def _summarize_mate_result(mate_name: str, round_num: int, result: dict) -> dict:
+    return {
+        "mate": mate_name,
+        "round": round_num,
+        "view": result.get("view"),
+        "confidence": result.get("confidence"),
+        "evidence_lead": (result.get("evidence") or [None])[0],
+        "result": result,
+    }
+
+
 class Orchestrator:
     def __init__(self, cfg, llm_client, mates, red_team=None, decision_lead=None,
                  audit_logger=None):
@@ -39,7 +60,8 @@ class Orchestrator:
         mates_cfg = self.cfg["mates"]
         return [m for m in mode_list if mates_cfg.get(m, {}).get("enabled", False)]
 
-    def _run_round_1_batch_1(self, mate_names: list, data_pack: dict, audit_id: str) -> list:
+    def _run_round_1_batch_1(self, mate_names: list, data_pack: dict, audit_id: str,
+                              on_event=None) -> list:
         results = []
         with ThreadPoolExecutor(max_workers=10) as ex:
             futures = {
@@ -47,21 +69,27 @@ class Orchestrator:
                 for n in mate_names
             }
             for f in as_completed(futures):
-                results.append(f.result())
+                name = futures[f]
+                result = f.result()
+                results.append(result)
+                _safe_emit(on_event, "mate_done", _summarize_mate_result(name, 1, result))
 
         if self.red_team is not None and "red_team" not in mate_names:
             rt_result = self.red_team.run(data_pack, None, self.audit, audit_id, 1)
             results.append(rt_result)
+            _safe_emit(on_event, "mate_done", _summarize_mate_result("red_team", 1, rt_result))
         return results
 
     def _run_round_1_batch_2(self, data_pack: dict, batch_1_results: list,
-                              audit_id: str) -> dict:
+                              audit_id: str, on_event=None) -> dict:
         if "position_mgr" not in self.mates:
             return None
-        return self.mates["position_mgr"].run(
+        result = self.mates["position_mgr"].run(
             data_pack, extra_ctx={"round_1_reports_json": batch_1_results},
             audit_logger=self.audit, audit_id=audit_id, round_num=1,
         )
+        _safe_emit(on_event, "mate_done", _summarize_mate_result("position_mgr", 1, result))
+        return result
 
     def _majority_view(self, reports: list) -> str:
         views = [r.get("view") for r in reports if r.get("view") in ("多", "空")]
@@ -70,7 +98,7 @@ class Orchestrator:
         counts = Counter(views)
         most = counts.most_common()
         if len(most) > 1 and most[0][1] == most[1][1]:
-            return "观望"  # tie => 观望
+            return "观望"
         return most[0][0]
 
     def _respond_to_rebuttal(self, mate_name: str, your_round_1: dict, rebuttal: dict,
@@ -103,33 +131,43 @@ class Orchestrator:
             return {"mate": mate_name, "keeps_view": True, "_error": f"LLM call failed: {e}"}
 
     def _run_round_2(self, data_pack: dict, round_1_reports: list,
-                     audit_id: str) -> dict:
+                     audit_id: str, on_event=None) -> dict:
         if self.red_team is None:
             return {"rebuttal": None, "responses": [], "majority": "观望"}
         majority = self._majority_view(round_1_reports)
+        _safe_emit(on_event, "rebuttal_start", {"majority": majority})
         rebuttal = self.red_team.run_rebuttal(
             data_pack=data_pack, round_1_reports=round_1_reports,
             majority_view=majority, audit_logger=self.audit, audit_id=audit_id,
         )
+        _safe_emit(on_event, "rebuttal_done",
+                   {"majority": majority, "rebuttal": rebuttal})
+
         majority_reports = [r for r in round_1_reports if r.get("view") == majority]
         majority_reports.sort(key=lambda r: r.get("confidence", 0), reverse=True)
         top3 = majority_reports[:3]
         responses = []
         with ThreadPoolExecutor(max_workers=3) as ex:
-            futures = []
+            futures = {}
             for r in top3:
                 mate_name = r.get("mate")
                 if not mate_name:
                     continue
-                futures.append(ex.submit(
+                futures[ex.submit(
                     self._respond_to_rebuttal, mate_name, r, rebuttal, majority, audit_id
-                ))
+                )] = mate_name
             for f in as_completed(futures):
-                responses.append(f.result())
+                resp = f.result()
+                mate_name = futures[f]
+                responses.append(resp)
+                _safe_emit(on_event, "response_done",
+                           {"mate": mate_name, "round": 2, "result": resp})
         return {"rebuttal": rebuttal, "responses": responses, "majority": majority}
 
     def _run_round_3(self, data_pack: dict, round_1_reports: list,
-                     round_2_debate: dict, audit_id: str) -> dict:
+                     round_2_debate: dict, audit_id: str, on_event=None) -> dict:
+        _safe_emit(on_event, "round_3_start",
+                   {"majority": round_2_debate.get("majority", "观望")})
         if self.decision_lead is None:
             return {"direction": "观望", "_error": "decision_lead 未注册"}
         return self.decision_lead.synthesize(
@@ -137,7 +175,8 @@ class Orchestrator:
             round_2_debate=round_2_debate, audit_logger=self.audit, audit_id=audit_id,
         )
 
-    def run(self, symbol: str, mode: str, data_pack: dict, session_key: str = None) -> dict:
+    def run(self, symbol: str, mode: str, data_pack: dict, session_key: str = None,
+            on_event=None) -> dict:
         if session_key is None:
             session_key = f"{symbol}_{int(datetime.now().timestamp())}"
         audit_id = self.audit.start_session(prefix="decision", session_key=session_key) if self.audit else None
@@ -147,18 +186,23 @@ class Orchestrator:
         try:
             enabled = self._enabled_mates_for_mode(mode)
             batch_1_mates = [m for m in enabled if m != "position_mgr"]
-            batch_1_results = self._run_round_1_batch_1(batch_1_mates, data_pack, audit_id)
+            _safe_emit(on_event, "round_1_start",
+                       {"mates": batch_1_mates + (["red_team"] if self.red_team and "red_team" not in batch_1_mates else [])})
+            batch_1_results = self._run_round_1_batch_1(batch_1_mates, data_pack, audit_id, on_event=on_event)
 
             if "position_mgr" in enabled:
-                position_mgr_result = self._run_round_1_batch_2(data_pack, batch_1_results, audit_id)
+                position_mgr_result = self._run_round_1_batch_2(
+                    data_pack, batch_1_results, audit_id, on_event=on_event)
                 if position_mgr_result:
                     batch_1_results.append(position_mgr_result)
 
             round_2_debate = {"rebuttal": None, "responses": [], "majority": "观望"}
             if rounds >= 3:
-                round_2_debate = self._run_round_2(data_pack, batch_1_results, audit_id)
+                round_2_debate = self._run_round_2(data_pack, batch_1_results, audit_id,
+                                                    on_event=on_event)
 
-            card = self._run_round_3(data_pack, batch_1_results, round_2_debate, audit_id)
+            card = self._run_round_3(data_pack, batch_1_results, round_2_debate, audit_id,
+                                      on_event=on_event)
         finally:
             if self.audit and audit_id:
                 try:

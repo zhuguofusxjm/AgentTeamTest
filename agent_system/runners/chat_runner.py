@@ -52,7 +52,13 @@ class ChatRunner:
             pack = self.build_pack(symbol, binance=self.binance, peer_symbols=["BTCUSDT"])
             if on_stage:
                 on_stage("orchestrator_start", {"symbol": symbol, "mode": "full"})
-            card = self.orch.run(symbol=symbol, mode="full", data_pack=pack)
+
+            def _orch_event(name, payload):
+                if on_stage:
+                    on_stage(name, payload)
+
+            card = self.orch.run(symbol=symbol, mode="full", data_pack=pack,
+                                  on_event=_orch_event)
             tags = pack.get("tags", [])
             audit_path = card.get("audit_path") or ""
             decision_id = save_decision(

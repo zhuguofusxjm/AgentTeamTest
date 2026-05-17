@@ -18,6 +18,79 @@ button { padding: 8px 16px; background: #2563eb; color: #fff; border: 0; border-
 .card .dir.wait { color: #6b7280; }
 .stream-evt { padding: 6px; border-bottom: 1px solid #eee; font-size: 12px; }
 .stream-evt .stage { font-weight: bold; color: #2563eb; }
+
+.phase-header {
+  margin: 10px 0 4px;
+  padding: 4px 6px;
+  border-left: 3px solid #2563eb;
+  background: #eff6ff;
+  font-size: 12px;
+}
+.phase-header .phase-label { font-weight: bold; color: #1e3a8a; margin-right: 6px; }
+.phase-header .phase-sub { color: #475569; font-size: 11px; }
+
+.mate-card {
+  margin-bottom: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fafafa;
+  font-size: 12px;
+}
+.mate-card.rebuttal { border-color: #fca5a5; background: #fef2f2; }
+.mate-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.mate-head:hover { background: #f3f4f6; }
+.mate-round {
+  font-size: 10px;
+  color: #6b7280;
+  background: #e5e7eb;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.mate-name { font-weight: bold; color: #111; flex: 0 0 auto; }
+.mate-view {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: bold;
+}
+.mate-view.long { background: #dcfce7; color: #15803d; }
+.mate-view.short { background: #fee2e2; color: #b91c1c; }
+.mate-view.wait { background: #f1f5f9; color: #475569; }
+.mate-conf {
+  margin-left: auto;
+  font-size: 11px;
+  color: #6b7280;
+  background: #fff;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid #e5e7eb;
+}
+.mate-arrow { color: #9ca3af; font-size: 10px; }
+.mate-evi {
+  padding: 0 6px 6px 38px;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.mate-detail {
+  margin: 0;
+  padding: 8px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow: auto;
+  border-top: 1px solid #334155;
+}
 #decisions-list { list-style: none; }
 #decisions-list li { padding: 6px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 13px; }
 #decisions-list li:hover { background: #f9fafb; }

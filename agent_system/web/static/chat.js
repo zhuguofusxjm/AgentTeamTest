@@ -34,13 +34,129 @@ function renderCard(card) {
   return root;
 }
 
-function appendStreamEvent(evt) {
+const VIEW_CLASS = {"多": "long", "空": "short", "观望": "wait"};
+
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function renderMateCard(stage, payload) {
   const div = document.createElement("div");
-  div.className = "stream-evt";
-  div.innerHTML = `<span class="stage">${evt.stage}</span>: ${
-    typeof evt.payload === "object" ? JSON.stringify(evt.payload).slice(0, 200) : evt.payload
+  div.className = "mate-card";
+  const view = payload.view ?? "?";
+  const conf = payload.confidence ?? "?";
+  const cls = VIEW_CLASS[view] || "wait";
+  const evidence = payload.evidence_lead ?? "(无)";
+  const roundLabel = payload.round ? `R${payload.round}` : "";
+  const mateName = payload.mate || "?";
+
+  const head = document.createElement("div");
+  head.className = "mate-head";
+  head.innerHTML = `
+    <span class="mate-round">${roundLabel}</span>
+    <span class="mate-name">${escapeHtml(mateName)}</span>
+    <span class="mate-view ${cls}">${escapeHtml(view)}</span>
+    <span class="mate-conf">${escapeHtml(String(conf))}</span>
+    <span class="mate-arrow">▸</span>
+  `;
+  const evi = document.createElement("div");
+  evi.className = "mate-evi";
+  evi.textContent = evidence;
+  const detail = document.createElement("pre");
+  detail.className = "mate-detail";
+  detail.style.display = "none";
+  detail.textContent = JSON.stringify(payload.result || payload, null, 2);
+
+  head.addEventListener("click", () => {
+    const open = detail.style.display === "none";
+    detail.style.display = open ? "block" : "none";
+    head.querySelector(".mate-arrow").textContent = open ? "▾" : "▸";
+  });
+
+  div.appendChild(head);
+  div.appendChild(evi);
+  div.appendChild(detail);
+  return div;
+}
+
+function renderPhaseHeader(label, sub) {
+  const div = document.createElement("div");
+  div.className = "phase-header";
+  div.innerHTML = `<span class="phase-label">${escapeHtml(label)}</span>${
+    sub ? `<span class="phase-sub">${escapeHtml(sub)}</span>` : ""
   }`;
-  streamEl.appendChild(div);
+  return div;
+}
+
+function renderRebuttalCard(payload) {
+  const rebuttal = payload.rebuttal || {};
+  const div = document.createElement("div");
+  div.className = "mate-card rebuttal";
+  const head = document.createElement("div");
+  head.className = "mate-head";
+  head.innerHTML = `
+    <span class="mate-round">R2</span>
+    <span class="mate-name">red_team 反驳</span>
+    <span class="mate-view short">vs ${escapeHtml(payload.majority || "?")}</span>
+    <span class="mate-arrow">▸</span>
+  `;
+  const summary = (rebuttal.extra && rebuttal.extra.rebuttal) || rebuttal.evidence?.[0] || "(无)";
+  const evi = document.createElement("div");
+  evi.className = "mate-evi";
+  evi.textContent = typeof summary === "string" ? summary : JSON.stringify(summary);
+  const detail = document.createElement("pre");
+  detail.className = "mate-detail";
+  detail.style.display = "none";
+  detail.textContent = JSON.stringify(rebuttal, null, 2);
+  head.addEventListener("click", () => {
+    const open = detail.style.display === "none";
+    detail.style.display = open ? "block" : "none";
+    head.querySelector(".mate-arrow").textContent = open ? "▾" : "▸";
+  });
+  div.appendChild(head); div.appendChild(evi); div.appendChild(detail);
+  return div;
+}
+
+function appendStreamEvent(evt) {
+  const stage = evt.stage;
+  const payload = evt.payload || {};
+
+  if (stage === "intent") {
+    streamEl.appendChild(renderPhaseHeader("意图", `${payload.intent || ""} ${payload.symbol || ""}`));
+  } else if (stage === "data_packing") {
+    streamEl.appendChild(renderPhaseHeader("拉数据", payload.symbol || ""));
+  } else if (stage === "orchestrator_start") {
+    streamEl.appendChild(renderPhaseHeader("圆桌开始", `${payload.symbol} mode=${payload.mode}`));
+  } else if (stage === "round_1_start") {
+    streamEl.appendChild(renderPhaseHeader("第 1 轮 独立分析", (payload.mates || []).join(", ")));
+  } else if (stage === "mate_done") {
+    streamEl.appendChild(renderMateCard(stage, payload));
+  } else if (stage === "rebuttal_start") {
+    streamEl.appendChild(renderPhaseHeader("第 2 轮 反驳", `多数派 = ${payload.majority || "?"}`));
+  } else if (stage === "rebuttal_done") {
+    streamEl.appendChild(renderRebuttalCard(payload));
+  } else if (stage === "response_done") {
+    const inner = renderMateCard("mate_done", {
+      mate: payload.mate, round: 2, view: payload.result?.updated_view,
+      confidence: payload.result?.updated_confidence,
+      evidence_lead: payload.result?.note, result: payload.result,
+    });
+    streamEl.appendChild(inner);
+  } else if (stage === "round_3_start") {
+    streamEl.appendChild(renderPhaseHeader("第 3 轮 综合", `多数派 = ${payload.majority || "?"}`));
+  } else if (stage === "done" || stage === "decision_card") {
+    streamEl.appendChild(renderPhaseHeader("决策完成", ""));
+  } else {
+    const div = document.createElement("div");
+    div.className = "stream-evt";
+    div.innerHTML = `<span class="stage">${escapeHtml(stage)}</span>: ${
+      typeof payload === "object" ? escapeHtml(JSON.stringify(payload).slice(0, 200)) : escapeHtml(payload)
+    }`;
+    streamEl.appendChild(div);
+  }
   streamEl.scrollTop = streamEl.scrollHeight;
 }
 
