@@ -63,8 +63,10 @@ def main():
         api_secret=os.environ.get(bcfg.get("api_secret_env", "")),
     )
 
-    push_key_env = cfg.get("push", {}).get("server_chan", {}).get("key_env", "SERVER_CHAN_KEY")
-    push = ServerChanPush(send_key_env=push_key_env)
+    push_cfg = cfg.get("push", {}).get("server_chan", {})
+    push_key_env = push_cfg.get("key_env", "SERVER_CHAN_KEY")
+    cooldown_min = cfg.get("push", {}).get("cooldown_min", 240)
+    push = ServerChanPush(send_key_env=push_key_env, cooldown_min=cooldown_min)
 
     orch = build_orchestrator(cfg, llm, prompts_dir, audit_dir)
 
