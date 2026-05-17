@@ -67,7 +67,11 @@ class Orchestrator:
         views = [r.get("view") for r in reports if r.get("view") in ("多", "空")]
         if not views:
             return "观望"
-        return Counter(views).most_common(1)[0][0]
+        counts = Counter(views)
+        most = counts.most_common()
+        if len(most) > 1 and most[0][1] == most[1][1]:
+            return "观望"  # tie => 观望
+        return most[0][0]
 
     def _respond_to_rebuttal(self, mate_name: str, your_round_1: dict, rebuttal: dict,
                               majority_view: str, audit_id: str) -> dict:
@@ -87,7 +91,7 @@ class Orchestrator:
                 m = re.search(r'\{.*\}', resp.text, re.DOTALL)
                 parsed = json.loads(m.group(0) if m else resp.text)
             except Exception:
-                parsed = {"mate": mate_name, "keeps_view": True, "note": "(parse failed)",
+                parsed = {"mate": mate_name, "keeps_view": True, "_error": "JSON parse failed",
                           "_raw": resp.text[:500]}
             if self.audit and audit_id:
                 self.audit.log_call(audit_id=audit_id, round_num=2,
@@ -96,7 +100,7 @@ class Orchestrator:
                                      tokens=resp.usage, duration_ms=duration_ms)
             return parsed
         except Exception as e:
-            return {"mate": mate_name, "keeps_view": True, "note": f"(call failed: {e})"}
+            return {"mate": mate_name, "keeps_view": True, "_error": f"LLM call failed: {e}"}
 
     def _run_round_2(self, data_pack: dict, round_1_reports: list,
                      audit_id: str) -> dict:
@@ -139,21 +143,26 @@ class Orchestrator:
         audit_id = self.audit.start_session(prefix="decision", session_key=session_key) if self.audit else None
         rounds = self.cfg["modes"][mode].get("rounds", 3)
 
-        enabled = self._enabled_mates_for_mode(mode)
-        batch_1_mates = [m for m in enabled if m != "position_mgr"]
-        batch_1_results = self._run_round_1_batch_1(batch_1_mates, data_pack, audit_id)
+        card = {"direction": "观望", "_error": "orchestrator failed"}
+        try:
+            enabled = self._enabled_mates_for_mode(mode)
+            batch_1_mates = [m for m in enabled if m != "position_mgr"]
+            batch_1_results = self._run_round_1_batch_1(batch_1_mates, data_pack, audit_id)
 
-        if "position_mgr" in enabled:
-            position_mgr_result = self._run_round_1_batch_2(data_pack, batch_1_results, audit_id)
-            if position_mgr_result:
-                batch_1_results.append(position_mgr_result)
+            if "position_mgr" in enabled:
+                position_mgr_result = self._run_round_1_batch_2(data_pack, batch_1_results, audit_id)
+                if position_mgr_result:
+                    batch_1_results.append(position_mgr_result)
 
-        round_2_debate = {"rebuttal": None, "responses": [], "majority": "观望"}
-        if rounds >= 3:
-            round_2_debate = self._run_round_2(data_pack, batch_1_results, audit_id)
+            round_2_debate = {"rebuttal": None, "responses": [], "majority": "观望"}
+            if rounds >= 3:
+                round_2_debate = self._run_round_2(data_pack, batch_1_results, audit_id)
 
-        card = self._run_round_3(data_pack, batch_1_results, round_2_debate, audit_id)
-
-        if self.audit and audit_id:
-            self.audit.finalize(audit_id, final_card=card)
+            card = self._run_round_3(data_pack, batch_1_results, round_2_debate, audit_id)
+        finally:
+            if self.audit and audit_id:
+                try:
+                    self.audit.finalize(audit_id, final_card=card)
+                except Exception:
+                    pass
         return card

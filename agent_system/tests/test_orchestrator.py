@@ -74,3 +74,23 @@ def test_position_mgr_runs_after_other_mates():
                         red_team=rt, decision_lead=dl, audit_logger=audit)
     orch.run(symbol="ETHUSDT", mode="full", data_pack={"symbol": "ETHUSDT", "tags": []})
     assert call_order.index("m1") < call_order.index("position_mgr")
+
+def test_lean_mode_skips_round_2():
+    cfg = {
+        "modes": {"lean": {"enabled_mates": ["m1"], "rounds": 2}},
+        "mates": {"m1": {"enabled": True, "model": "deepseek-chat"}},
+        "default_model": "deepseek-chat",
+    }
+    m1 = _mock_mate("m1")
+    rt = MagicMock()
+    rt.run = MagicMock(return_value={"mate":"red_team","view":"观望","confidence":0,"evidence":[],"extra":{}})
+    rt.run_rebuttal = MagicMock()
+    dl = MagicMock()
+    dl.synthesize.return_value = {"direction": "多"}
+    audit = MagicMock(); audit.start_session.return_value = "a"
+    llm = MagicMock()
+    orch = Orchestrator(cfg=cfg, llm_client=llm, mates={"m1": m1},
+                        red_team=rt, decision_lead=dl, audit_logger=audit)
+    orch.run(symbol="X", mode="lean", data_pack={"symbol": "X", "tags": []})
+    rt.run_rebuttal.assert_not_called()
+    assert audit.finalize.called
