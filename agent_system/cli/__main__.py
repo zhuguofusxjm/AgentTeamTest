@@ -109,6 +109,14 @@ def cmd_dry_run(args):
     else:
         print("Provide --mate or --mode")
 
+def cmd_retro(args):
+    cfg = load_config(args.config)
+    llm = _build_llm_client(cfg)
+    from agent_system.runners.retrospective_runner import RetrospectiveRunner
+    runner = RetrospectiveRunner(cfg=cfg, llm_client=llm, db_path=cfg["data_db"])
+    runner.run_daily()
+    print("done")
+
 def main():
     parser = argparse.ArgumentParser(prog="agent_system.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -121,6 +129,10 @@ def main():
     p_dry.add_argument("--peers", nargs="*", default=["BTCUSDT"])
     p_dry.add_argument("--config", default="agent_system/config.yaml")
     p_dry.set_defaults(func=cmd_dry_run)
+
+    p_retro = sub.add_parser("retrospective")
+    p_retro.add_argument("--config", default="agent_system/config.yaml")
+    p_retro.set_defaults(func=cmd_retro)
 
     args = parser.parse_args()
     args.func(args)
