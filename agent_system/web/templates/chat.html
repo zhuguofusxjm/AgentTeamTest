@@ -7,10 +7,6 @@
 </head>
 <body>
   <div class="layout">
-    <aside class="left">
-      <h3>最近决策</h3>
-      <ul id="decisions-list"></ul>
-    </aside>
     <main class="center">
       <div id="messages"></div>
       <form id="chat-form">
@@ -30,6 +26,11 @@
       <div id="tab-team" class="tab-pane">
         <div id="team-list"></div>
       </div>
+    </aside>
+    <button id="drawer-toggle" title="最近决策">最近决策</button>
+    <aside class="drawer" id="drawer">
+      <h3>最近决策</h3>
+      <ul id="decisions-list"></ul>
     </aside>
   </div>
   <script src="/static/chat.js"></script>

@@ -200,7 +200,7 @@ async function send(text) {
         appendMsg("assistant", result.message || JSON.stringify(result));
       }
       es.close();
-      loadDecisions();
+      if (document.body.classList.contains("drawer-open")) loadDecisions();
     }
     if (evt.stage === "error") {
       appendMsg("assistant", "错误: " + JSON.stringify(evt.payload));
@@ -218,6 +218,7 @@ formEl.addEventListener("submit", (e) => {
 });
 
 async function loadDecisions() {
+  if (!listEl) return;
   const r = await fetch("/api/decisions");
   const list = await r.json();
   listEl.innerHTML = list.map(d =>
@@ -225,7 +226,16 @@ async function loadDecisions() {
   ).join("");
 }
 
-loadDecisions();
+// --- 最近决策抽屉 (默认收起,点击 toggle 打开) ---
+(function initDrawer() {
+  const toggle = document.getElementById("drawer-toggle");
+  if (!toggle) return;
+  toggle.addEventListener("click", () => {
+    const isOpen = document.body.classList.toggle("drawer-open");
+    toggle.textContent = isOpen ? "收起 ▶" : "最近决策";
+    if (isOpen) loadDecisions();
+  });
+})();
 
 // --- Right panel tabs ---
 (function initTabs() {
