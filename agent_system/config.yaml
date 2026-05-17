@@ -71,18 +71,15 @@ modes:
   full:
     enabled_mates: [trend_multi_tf, funding_rate, smart_money,
                     long_short_compare, volatility, experience,
-                    red_team, macro_sentiment, liquidity,
-                    position_mgr]
+                    macro_sentiment, liquidity, position_mgr]
     rounds: 3
   lean:
     enabled_mates: [trend_multi_tf, funding_rate, smart_money,
-                    long_short_compare, red_team, position_mgr,
-                    experience]
+                    long_short_compare, position_mgr, experience]
     rounds: 2
   tracking:
     enabled_mates: [trend_multi_tf, funding_rate, smart_money,
-                    long_short_compare, red_team, position_mgr,
-                    experience]
+                    long_short_compare, position_mgr, experience]
     rounds: 2
 
 scheduler:
