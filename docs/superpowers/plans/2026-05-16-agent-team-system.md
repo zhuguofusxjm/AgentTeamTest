@@ -758,6 +758,20 @@ def test_init_creates_chat_messages_table(tmp_path):
     cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_messages'")
     assert cur.fetchone() is not None
 
+def test_init_creates_tracked_positions_table(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_new_tables(db_path)
+    conn = get_conn(db_path)
+    cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tracked_positions'")
+    assert cur.fetchone() is not None
+
+def test_init_creates_track_history_table(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_new_tables(db_path)
+    conn = get_conn(db_path)
+    cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='track_history'")
+    assert cur.fetchone() is not None
+
 def test_init_is_idempotent(tmp_path):
     db_path = str(tmp_path / "test.db")
     init_new_tables(db_path)
@@ -830,6 +844,34 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 """
 DDL_CHAT_IDX = "CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_messages(session_id)"
 
+DDL_TRACKED_POSITIONS = """
+CREATE TABLE IF NOT EXISTS tracked_positions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT,
+  direction TEXT,
+  entry_price REAL,
+  stop_loss REAL,
+  take_profit REAL,
+  status TEXT,
+  created_at TEXT,
+  closed_at TEXT,
+  close_reason TEXT,
+  notes TEXT,
+  entry_signals TEXT
+)
+"""
+DDL_TRACKED_IDX = "CREATE INDEX IF NOT EXISTS idx_track_status ON tracked_positions(status)"
+
+DDL_TRACK_HISTORY = """
+CREATE TABLE IF NOT EXISTS track_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  track_id INTEGER,
+  snapshot_json TEXT,
+  created_at TEXT
+)
+"""
+DDL_TRACK_HISTORY_IDX = "CREATE INDEX IF NOT EXISTS idx_th_track ON track_history(track_id)"
+
 def init_new_tables(db_path: str):
     conn = get_conn(db_path)
     try:
@@ -840,6 +882,10 @@ def init_new_tables(db_path: str):
         conn.execute(DDL_EXPERIENCES_IDX)
         conn.execute(DDL_CHAT_MESSAGES)
         conn.execute(DDL_CHAT_IDX)
+        conn.execute(DDL_TRACKED_POSITIONS)
+        conn.execute(DDL_TRACKED_IDX)
+        conn.execute(DDL_TRACK_HISTORY)
+        conn.execute(DDL_TRACK_HISTORY_IDX)
         conn.commit()
     finally:
         conn.close()
@@ -3077,24 +3123,97 @@ git commit -m "feat: chat_runner 意图解析 + 调度 orchestrator"
 
 ---
 
-### Task 3.4: runners/scan_runner 复用旧 signals 预筛
+### Task 3.4: runners/scan_runner 自带预筛器
 
 **Files:**
 - Create: `agent_system/runners/scan_runner.py`
+- Test: `agent_system/tests/test_scan_prefilter.py`
 
-- [ ] **Step 1: 实现 `runners/scan_runner.py`**
+预筛策略(替代旧 signals.py): 用币安 ticker 数据(24h 成交量 + 当前费率)做轻量筛选,得出候选币种。
+- 取所有 USDT 永续合约 24h quoteVolume top 30
+- 在 top 30 中再按费率绝对值排序,取 top 10
+- 在 top 30 中再按持仓多空比偏离中性(=1.0)的程度排序,取另外 top 10
+- 两组并集,去重后限 max_candidates 个
+
+- [ ] **Step 1: 写预筛失败测试**
 
 ```python
-import sys
-from pathlib import Path
-from datetime import datetime
+from unittest.mock import MagicMock
+from agent_system.runners.scan_runner import _prefilter_by_volume_and_extremes
 
-# 把项目根加入 sys.path 以引用旧 signals.py / coin_groups.py
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+def test_prefilter_combines_top_volume_funding_and_position():
+    # 5 个币: A 体量最大但费率温和; B 中等体量+极端费率; C 中等体量+极端持仓多空比;
+    # D 小体量(被筛掉); E 中等体量+正常 -> 不入选
+    binance = MagicMock()
+    binance.get_premium_index.return_value = [
+        {"symbol": "AUSDT", "lastFundingRate": "0.0001"},
+        {"symbol": "BUSDT", "lastFundingRate": "0.005"},
+        {"symbol": "CUSDT", "lastFundingRate": "0.0002"},
+        {"symbol": "EUSDT", "lastFundingRate": "0.0001"},
+    ]
+    # 不同 symbol 的 24h ticker 不同体量
+    def fake_ticker():
+        return [
+            {"symbol": "AUSDT", "quoteVolume": "1000000000"},
+            {"symbol": "BUSDT", "quoteVolume": "500000000"},
+            {"symbol": "CUSDT", "quoteVolume": "400000000"},
+            {"symbol": "EUSDT", "quoteVolume": "300000000"},
+            {"symbol": "DUSDT", "quoteVolume": "100"},  # 太小, 排除
+        ]
+    binance.get_24h_ticker = fake_ticker
+    # C 的大户多空比异常偏离
+    def fake_top_pos(symbol, **kw):
+        if symbol == "CUSDT":
+            return [{"longShortRatio": "3.5", "timestamp": 1}]
+        return [{"longShortRatio": "1.05", "timestamp": 1}]
+    binance.get_top_long_short_position_ratio.side_effect = fake_top_pos
 
+    candidates = _prefilter_by_volume_and_extremes(
+        binance=binance, top_volume=4, top_funding=2, top_position_dev=2,
+    )
+    assert "BUSDT" in candidates  # 极端费率
+    assert "CUSDT" in candidates  # 极端多空比
+    assert "DUSDT" not in candidates  # 体量太小
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `pytest agent_system/tests/test_scan_prefilter.py -v`
+Expected: FAIL "ModuleNotFoundError"
+
+- [ ] **Step 3: 实现 `runners/scan_runner.py`**
+
+```python
 from agent_system.data.decisions_store import save_decision
+
+def _prefilter_by_volume_and_extremes(binance, top_volume=30, top_funding=10,
+                                        top_position_dev=10):
+    """简化预筛: 取体量 top N, 在其中再选费率/持仓多空比极端者并集。"""
+    tickers = binance.get_24h_ticker()
+    ticker_map = {t["symbol"]: float(t.get("quoteVolume", 0))
+                   for t in tickers if t.get("symbol", "").endswith("USDT")}
+    top_vol_symbols = sorted(ticker_map.keys(), key=lambda s: ticker_map[s], reverse=True)[:top_volume]
+
+    funding = binance.get_premium_index()
+    fmap = {f["symbol"]: float(f.get("lastFundingRate", 0))
+             for f in funding if f.get("symbol") in top_vol_symbols}
+    by_funding = sorted(fmap.items(), key=lambda kv: abs(kv[1]), reverse=True)[:top_funding]
+
+    pos_dev = []
+    for s in top_vol_symbols:
+        try:
+            pr = binance.get_top_long_short_position_ratio(s, period="1h", limit=1)
+            ratio = float(pr[-1]["longShortRatio"]) if pr else 1.0
+            pos_dev.append((s, abs(ratio - 1.0)))
+        except Exception:
+            continue
+    by_pos = sorted(pos_dev, key=lambda kv: kv[1], reverse=True)[:top_position_dev]
+
+    out = []
+    for s, _ in by_funding + by_pos:
+        if s not in out:
+            out.append(s)
+    return out
 
 class ScanRunner:
     def __init__(self, cfg, llm_client, orchestrator, binance, db_path, data_packer,
@@ -3107,28 +3226,18 @@ class ScanRunner:
         self.build_pack = data_packer
         self.push = push_client
 
-    def _prefilter_candidates(self) -> list[str]:
-        """复用旧 signals.py 做预筛, 返回候选币种列表"""
+    def _candidates(self) -> list[str]:
         try:
-            from signals import scan_all_symbols  # 旧函数名,如不一致按需调整
-        except ImportError:
-            try:
-                import signals as _s
-                if hasattr(_s, "compute_signals_all"):
-                    return _s.compute_signals_all()[: self.cfg["scheduler"]["scan_max_candidates"]]
-            except ImportError:
-                pass
-            return []
-        try:
-            results = scan_all_symbols(min_score=self.cfg["scheduler"]["scan_min_score"])
-            results.sort(key=lambda x: x.get("score", 0), reverse=True)
-            return [r["symbol"] for r in results[: self.cfg["scheduler"]["scan_max_candidates"]]]
+            limit = self.cfg["scheduler"]["scan_max_candidates"]
+            return _prefilter_by_volume_and_extremes(
+                self.binance, top_volume=30, top_funding=10, top_position_dev=10
+            )[:limit]
         except Exception as e:
-            print(f"[scan] prefilter failed: {e}; fallback to top volume coins")
+            print(f"[scan] prefilter failed: {e}; fallback")
             return ["BTCUSDT", "ETHUSDT"]
 
     def run_once(self) -> list[dict]:
-        candidates = self._prefilter_candidates()
+        candidates = self._candidates()
         print(f"[scan] candidates: {candidates}")
         cards = []
         for symbol in candidates:
@@ -3149,30 +3258,165 @@ class ScanRunner:
         return top
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 4: 在 `data/binance_client.py` 增加 `get_24h_ticker` 方法**
+
+```python
+    def get_24h_ticker(self):
+        url = f"{self.BASE_URL}/fapi/v1/ticker/24hr"
+        r = requests.get(url, headers=self._headers(), timeout=30)
+        r.raise_for_status()
+        return r.json()
+```
+
+- [ ] **Step 5: 测试通过**
+
+Run: `pytest agent_system/tests/test_scan_prefilter.py -v`
+Expected: PASS
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add agent_system/runners/scan_runner.py
-git commit -m "feat: scan_runner 复用旧 signals.py 预筛 + lean 模式批量分析"
+git add agent_system/runners/scan_runner.py agent_system/data/binance_client.py agent_system/tests/test_scan_prefilter.py
+git commit -m "feat: scan_runner 自带预筛器(成交量+费率/持仓极端度)"
 ```
 
 ---
 
-### Task 3.5: runners/tracking_runner 持仓跟踪
+### Task 3.5: data/tracking_store + runners/tracking_runner
 
 **Files:**
+- Create: `agent_system/data/tracking_store.py`
 - Create: `agent_system/runners/tracking_runner.py`
+- Test: `agent_system/tests/test_tracking_store.py`
 
-- [ ] **Step 1: 实现 `runners/tracking_runner.py`**
+- [ ] **Step 1: 写跟踪 CRUD 失败测试**
 
 ```python
-import sys
-from pathlib import Path
-from datetime import datetime
+import json
+from agent_system.data.db import init_new_tables
+from agent_system.data.tracking_store import (
+    add_tracked_position, get_active_tracks, close_tracked_position,
+    save_track_snapshot, list_track_history,
+)
 
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+def test_add_and_list_active(tmp_path):
+    db = str(tmp_path / "t.db")
+    init_new_tables(db)
+    tid = add_tracked_position(db, symbol="ETHUSDT", direction="多",
+                                entry_price=3120, stop_loss=3050, take_profit=3260,
+                                entry_signals="trend+smart_money")
+    active = get_active_tracks(db)
+    assert len(active) == 1
+    assert active[0]["id"] == tid
+    assert active[0]["status"] == "active"
+
+def test_close(tmp_path):
+    db = str(tmp_path / "t.db")
+    init_new_tables(db)
+    tid = add_tracked_position(db, "ETHUSDT", "多", 3120, 3050, 3260, "")
+    close_tracked_position(db, tid, reason="manual")
+    active = get_active_tracks(db)
+    assert len(active) == 0
+
+def test_save_and_list_snapshots(tmp_path):
+    db = str(tmp_path / "t.db")
+    init_new_tables(db)
+    tid = add_tracked_position(db, "ETHUSDT", "多", 3120, 3050, 3260, "")
+    save_track_snapshot(db, tid, snapshot={"price": 3150, "pnl": 0.96})
+    save_track_snapshot(db, tid, snapshot={"price": 3170, "pnl": 1.6})
+    rows = list_track_history(db, tid)
+    assert len(rows) == 2
+    assert json.loads(rows[0]["snapshot_json"])["price"] == 3150
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `pytest agent_system/tests/test_tracking_store.py -v`
+Expected: FAIL
+
+- [ ] **Step 3: 实现 `data/tracking_store.py`**
+
+```python
+import json
+from datetime import datetime
+from agent_system.data.db import get_conn
+
+def add_tracked_position(db_path, symbol, direction, entry_price,
+                          stop_loss, take_profit, entry_signals="", notes="") -> int:
+    conn = get_conn(db_path)
+    try:
+        cur = conn.execute(
+            """INSERT INTO tracked_positions
+               (symbol, direction, entry_price, stop_loss, take_profit,
+                status, created_at, entry_signals, notes)
+               VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)""",
+            (symbol, direction, entry_price, stop_loss, take_profit,
+             datetime.now().isoformat(), entry_signals, notes),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+def get_active_tracks(db_path) -> list[dict]:
+    conn = get_conn(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM tracked_positions WHERE status = 'active'"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+def close_tracked_position(db_path, track_id, reason: str = ""):
+    conn = get_conn(db_path)
+    try:
+        conn.execute(
+            """UPDATE tracked_positions
+               SET status = 'closed', closed_at = ?, close_reason = ?
+               WHERE id = ?""",
+            (datetime.now().isoformat(), reason, track_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def save_track_snapshot(db_path, track_id, snapshot: dict):
+    conn = get_conn(db_path)
+    try:
+        conn.execute(
+            """INSERT INTO track_history (track_id, snapshot_json, created_at)
+               VALUES (?, ?, ?)""",
+            (track_id, json.dumps(snapshot, ensure_ascii=False, default=str),
+             datetime.now().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def list_track_history(db_path, track_id, limit=50) -> list[dict]:
+    conn = get_conn(db_path)
+    try:
+        rows = conn.execute(
+            """SELECT * FROM track_history WHERE track_id = ?
+               ORDER BY id DESC LIMIT ?""",
+            (track_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+```
+
+- [ ] **Step 4: 测试通过**
+
+Run: `pytest agent_system/tests/test_tracking_store.py -v`
+Expected: PASS
+
+- [ ] **Step 5: 实现 `runners/tracking_runner.py`**
+
+```python
+from datetime import datetime
+from agent_system.data.tracking_store import get_active_tracks, save_track_snapshot
 
 class TrackingRunner:
     def __init__(self, cfg, llm_client, orchestrator, binance, db_path, data_packer,
@@ -3185,16 +3429,7 @@ class TrackingRunner:
         self.build_pack = data_packer
         self.push = push_client
 
-    def _get_active_tracks(self) -> list[dict]:
-        """复用旧 db.py 的 get_active_tracks"""
-        try:
-            from db import get_active_tracks
-            return get_active_tracks()
-        except ImportError:
-            return []
-
     def _build_tracking_context(self, track: dict) -> dict:
-        """构造跟踪上下文(已有的 entry/方向/盈亏/历史 5 次分析)"""
         return {
             "track_id": track.get("id"),
             "entry_price": track.get("entry_price"),
@@ -3205,7 +3440,7 @@ class TrackingRunner:
         }
 
     def run_once(self) -> list[dict]:
-        tracks = self._get_active_tracks()
+        tracks = get_active_tracks(self.db_path)
         print(f"[tracking] active tracks: {len(tracks)}")
         results = []
         for t in tracks:
@@ -3217,6 +3452,8 @@ class TrackingRunner:
                     symbol=symbol, mode="tracking", data_pack=pack,
                     session_key=f"track_{t.get('id')}_{int(datetime.now().timestamp())}",
                 )
+                save_track_snapshot(self.db_path, t["id"],
+                                     snapshot={"card": card, "price_now": pack.get("price_now")})
                 results.append({"track": t, "card": card})
                 if self.push:
                     self.push.push_tracking_update(t, card)
@@ -3225,11 +3462,11 @@ class TrackingRunner:
         return results
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add agent_system/runners/tracking_runner.py
-git commit -m "feat: tracking_runner 持仓跟踪(复用旧 db.get_active_tracks)"
+git add agent_system/data/tracking_store.py agent_system/runners/tracking_runner.py agent_system/tests/test_tracking_store.py
+git commit -m "feat: tracking_store CRUD + tracking_runner(自带跟踪 DB,不依赖旧代码)"
 ```
 
 ---
