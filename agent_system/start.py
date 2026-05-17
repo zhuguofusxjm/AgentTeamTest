@@ -33,7 +33,11 @@ def _build_orchestrator(cfg, llm, prompts_dir, audit_dir):
     decision_lead = None
     for name, cls in MATE_CLASSES.items():
         mate_cfg = get_mate_config(cfg, name)
-        instance = cls(name=name, llm_client=llm, mate_cfg=mate_cfg, prompts_dir=prompts_dir)
+        if name == "experience":
+            instance = cls(name=name, llm_client=llm, mate_cfg=mate_cfg,
+                            prompts_dir=prompts_dir, db_path=cfg["data_db"])
+        else:
+            instance = cls(name=name, llm_client=llm, mate_cfg=mate_cfg, prompts_dir=prompts_dir)
         if name == "red_team":
             red_team = instance
         elif name == "decision_lead":
