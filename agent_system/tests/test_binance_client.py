@@ -25,3 +25,28 @@ def test_get_klines_builds_url(monkeypatch):
     assert captured["params"]["interval"] == "1h"
     assert captured["params"]["limit"] == 10
     assert len(out) == 1
+
+def test_get_funding_info_uses_get(monkeypatch):
+    captured = {}
+    def fake_get(url, params=None, timeout=None, headers=None):
+        captured["url"] = url
+        class R:
+            def raise_for_status(self): pass
+            def json(self): return [{"symbol": "BTCUSDT"}]
+        return R()
+    import agent_system.data.binance_client as bc
+    monkeypatch.setattr(bc.requests, "get", fake_get)
+    client = BinanceClient(api_key="k", api_secret="s")
+    out = client.get_funding_info()
+    assert "/fapi/v1/fundingInfo" in captured["url"]
+    assert isinstance(out, list)
+
+def test_headers_includes_api_key():
+    client = BinanceClient(api_key="my-key")
+    headers = client._headers()
+    assert headers.get("X-MBX-APIKEY") == "my-key"
+
+def test_headers_empty_without_api_key():
+    client = BinanceClient()
+    headers = client._headers()
+    assert "X-MBX-APIKEY" not in headers
