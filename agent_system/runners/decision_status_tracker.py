@@ -7,8 +7,8 @@ class DecisionStatusTracker:
         self.binance = binance
         self.expire_days = expire_days
 
-    def _highest_low(self, symbol: str):
-        klines = self.binance.get_klines(symbol, interval="1h", limit=200)
+    def _highest_low(self, symbol: str, start_ms: int):
+        klines = self.binance.get_klines(symbol, interval="1h", limit=500, start_time=start_ms)
         if not klines:
             return None, None, None
         highs = [float(k[2]) for k in klines]
@@ -26,8 +26,10 @@ class DecisionStatusTracker:
         if entry is None or sl is None or tp is None:
             return None
         symbol = decision["symbol"]
+        created = datetime.fromisoformat(decision["created_at"])
+        start_ms = int(created.timestamp() * 1000)
         try:
-            highest, lowest, last_close = self._highest_low(symbol)
+            highest, lowest, last_close = self._highest_low(symbol, start_ms)
         except Exception:
             return None
         if highest is None:
@@ -46,7 +48,6 @@ class DecisionStatusTracker:
             if lowest <= tp:
                 pnl_pct = (entry - tp) / entry * 100
                 return ("win", pnl_pct)
-        created = datetime.fromisoformat(decision["created_at"])
         if datetime.now() - created > timedelta(days=self.expire_days):
             if direction == "多":
                 pnl_pct = (last_close - entry) / entry * 100
