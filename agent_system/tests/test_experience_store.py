@@ -16,19 +16,35 @@ def test_create_and_find(tmp_path):
     e = find_by_tag_signature(db, ["funding=extreme_high", "smart_money=divergence"])
     assert e["experience_id"] == eid
 
-def test_update(tmp_path):
+def test_update_appends_lesson_with_date_stamp(tmp_path):
     db = str(tmp_path / "t.db")
     init_new_tables(db)
     eid = create_experience(db, tags=["a"], scenario_summary="s",
                              decisions_referenced=[1], outcome_stats={"win": 1, "loss": 0, "expired": 0},
-                             lesson="L1", applicable_when="", caveats="")
+                             lesson="第一次的复盘", applicable_when="", caveats="")
     update_experience(db, eid,
                        new_decision_ids=[2, 3],
                        new_outcome_stats={"win": 2, "loss": 1, "expired": 0},
-                       new_lesson="L2")
+                       new_lesson="第二次新增的洞察")
     e = find_by_tag_signature(db, ["a"])
     assert json.loads(e["decisions_referenced"]) == [1, 2, 3]
-    assert e["lesson"] == "L2"
+    # 旧 lesson 仍在,新 lesson 追加
+    assert "第一次的复盘" in e["lesson"]
+    assert "第二次新增的洞察" in e["lesson"]
+    # 含分隔标记
+    assert "---" in e["lesson"]
+
+
+def test_update_with_no_new_lesson_keeps_existing(tmp_path):
+    db = str(tmp_path / "t.db")
+    init_new_tables(db)
+    eid = create_experience(db, tags=["a"], scenario_summary="s",
+                             decisions_referenced=[1], outcome_stats={"win": 1, "loss": 0, "expired": 0},
+                             lesson="原有", applicable_when="", caveats="")
+    update_experience(db, eid, new_decision_ids=[2])
+    e = find_by_tag_signature(db, ["a"])
+    assert e["lesson"] == "原有"
+
 
 def test_search_by_tags(tmp_path):
     db = str(tmp_path / "t.db")

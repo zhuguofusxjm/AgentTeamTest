@@ -35,7 +35,13 @@ def update_experience(db_path, eid, new_decision_ids=None, new_outcome_stats=Non
         outcome = json.loads(row["outcome_stats"] or "{}")
         if new_outcome_stats:
             outcome = new_outcome_stats
-        lesson = new_lesson if new_lesson is not None else row["lesson"]
+        if new_lesson:
+            stamp = datetime.now().strftime("%Y-%m-%d")
+            stats_str = f"win={outcome.get('win',0)} loss={outcome.get('loss',0)} expired={outcome.get('expired',0)}"
+            block = f"\n\n--- {stamp} ({stats_str}, n={len(existing_ids)}) ---\n{new_lesson}"
+            lesson = (row["lesson"] or "") + block
+        else:
+            lesson = row["lesson"]
         aw = new_applicable_when if new_applicable_when is not None else row["applicable_when"]
         cv = new_caveats if new_caveats is not None else row["caveats"]
         conn.execute(
