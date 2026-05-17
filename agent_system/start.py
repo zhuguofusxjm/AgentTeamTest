@@ -12,6 +12,7 @@ from agent_system.core.llm_client import LLMClient
 from agent_system.core.data_packer import build as build_pack
 from agent_system.core.audit_logger import AuditLogger
 from agent_system.core.orchestrator import Orchestrator
+from agent_system.core.mate_registry import build_orchestrator
 from agent_system.providers.deepseek import DeepSeekProvider
 from agent_system.data.binance_client import BinanceClient
 from agent_system.data.db import init_new_tables
@@ -25,29 +26,6 @@ from agent_system.runners.retrospective_runner import RetrospectiveRunner
 
 CONFIG_PATH = "agent_system/config.yaml"
 _stop_flag = threading.Event()
-
-def _build_orchestrator(cfg, llm, prompts_dir, audit_dir):
-    from agent_system.cli.__main__ import _register_mate_classes, MATE_CLASSES
-    _register_mate_classes()
-    audit = AuditLogger(audit_dir=audit_dir)
-    mates = {}
-    red_team = None
-    decision_lead = None
-    for name, cls in MATE_CLASSES.items():
-        mate_cfg = get_mate_config(cfg, name)
-        if name == "experience":
-            instance = cls(name=name, llm_client=llm, mate_cfg=mate_cfg,
-                            prompts_dir=prompts_dir, db_path=cfg["data_db"])
-        else:
-            instance = cls(name=name, llm_client=llm, mate_cfg=mate_cfg, prompts_dir=prompts_dir)
-        if name == "red_team":
-            red_team = instance
-        elif name == "decision_lead":
-            decision_lead = instance
-        else:
-            mates[name] = instance
-    return Orchestrator(cfg=cfg, llm_client=llm, mates=mates, red_team=red_team,
-                        decision_lead=decision_lead, audit_logger=audit)
 
 def _scan_loop(scan_runner, interval_min):
     while not _stop_flag.is_set():
@@ -88,7 +66,7 @@ def main():
     push_key_env = cfg.get("push", {}).get("server_chan", {}).get("key_env", "SERVER_CHAN_KEY")
     push = ServerChanPush(send_key_env=push_key_env)
 
-    orch = _build_orchestrator(cfg, llm, prompts_dir, audit_dir)
+    orch = build_orchestrator(cfg, llm, prompts_dir, audit_dir)
 
     chat_runner = ChatRunner(cfg=cfg, llm_client=llm, orchestrator=orch,
                              binance=binance, db_path=db_path, data_packer=build_pack)

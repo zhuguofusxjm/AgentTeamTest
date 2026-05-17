@@ -7,59 +7,9 @@ from pathlib import Path
 from agent_system.core.config_loader import load_config, get_mate_config, resolve_provider_key
 from agent_system.core.llm_client import LLMClient
 from agent_system.core.data_packer import build as build_pack
+from agent_system.core.mate_registry import register_mate_classes, build_orchestrator, MATE_CLASSES
 from agent_system.providers.deepseek import DeepSeekProvider
 from agent_system.data.binance_client import BinanceClient
-
-MATE_CLASSES = {}
-
-def _register_mate_classes():
-    from agent_system.mates.trend_multi_tf import TrendMultiTfMate
-    from agent_system.mates.funding_rate import FundingRateMate
-    from agent_system.mates.smart_money import SmartMoneyMate
-    from agent_system.mates.long_short_compare import LongShortCompareMate
-    from agent_system.mates.volatility import VolatilityMate
-    from agent_system.mates.experience import ExperienceMate
-    from agent_system.mates.red_team import RedTeamMate
-    from agent_system.mates.macro_sentiment import MacroSentimentMate
-    from agent_system.mates.liquidity import LiquidityMate
-    from agent_system.mates.position_mgr import PositionMgrMate
-    from agent_system.mates.decision_lead import DecisionLeadMate
-    MATE_CLASSES.update({
-        "trend_multi_tf": TrendMultiTfMate,
-        "funding_rate": FundingRateMate,
-        "smart_money": SmartMoneyMate,
-        "long_short_compare": LongShortCompareMate,
-        "volatility": VolatilityMate,
-        "experience": ExperienceMate,
-        "red_team": RedTeamMate,
-        "macro_sentiment": MacroSentimentMate,
-        "liquidity": LiquidityMate,
-        "position_mgr": PositionMgrMate,
-        "decision_lead": DecisionLeadMate,
-    })
-
-def _build_orchestrator(cfg, llm, prompts_dir, audit_dir):
-    from agent_system.core.orchestrator import Orchestrator
-    from agent_system.core.audit_logger import AuditLogger
-    audit = AuditLogger(audit_dir=audit_dir)
-    mates = {}
-    red_team = None
-    decision_lead = None
-    for name, cls in MATE_CLASSES.items():
-        mate_cfg = get_mate_config(cfg, name)
-        if name == "experience":
-            instance = cls(name=name, llm_client=llm, mate_cfg=mate_cfg,
-                            prompts_dir=prompts_dir, db_path=cfg["data_db"])
-        else:
-            instance = cls(name=name, llm_client=llm, mate_cfg=mate_cfg, prompts_dir=prompts_dir)
-        if name == "red_team":
-            red_team = instance
-        elif name == "decision_lead":
-            decision_lead = instance
-        else:
-            mates[name] = instance
-    return Orchestrator(cfg=cfg, llm_client=llm, mates=mates, red_team=red_team,
-                        decision_lead=decision_lead, audit_logger=audit)
 
 def _build_llm_client(cfg):
     providers = {}
@@ -76,7 +26,7 @@ def _build_binance(cfg):
     return BinanceClient(api_key=api_key, api_secret=api_secret)
 
 def cmd_dry_run(args):
-    _register_mate_classes()
+    register_mate_classes()
     cfg = load_config(args.config)
     llm = _build_llm_client(cfg)
     binance = _build_binance(cfg)
@@ -101,7 +51,7 @@ def cmd_dry_run(args):
         print("[3/3] Result:")
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.mode:
-        orch = _build_orchestrator(cfg, llm, prompts_dir, audit_dir)
+        orch = build_orchestrator(cfg, llm, prompts_dir, audit_dir)
         print(f"[2/3] Running orchestrator mode='{args.mode}'...")
         card = orch.run(symbol=args.symbol, mode=args.mode, data_pack=pack)
         print("[3/3] Decision card:")
