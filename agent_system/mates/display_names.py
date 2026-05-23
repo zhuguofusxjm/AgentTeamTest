@@ -16,6 +16,7 @@ DISPLAY_NAMES = {
     "liquidity": "水位官",
     "position_mgr": "仓位管家",
     "decision_lead": "决策长",
+    "smc_structure": "结构师",
 }
 
 PROFILES = {
@@ -84,6 +85,12 @@ PROFILES = {
         "focus": "综合三轮辩论(独立 → 反驳 → 综合)产出最终决策卡片",
         "signals": "多 Mate 共识 + 蒋军反驳后的 confidence 加权",
         "output": "完整决策卡片(direction/entry/SL/TP/key_evidence/key_risks/plan)",
+    },
+    "smc_structure": {
+        "role": "SMC 结构师",
+        "focus": "4h / 1d 的 BOS/CHoCH 趋势 + Order Block / FVG / EQH-EQL 关键价位",
+        "signals": "swing 破位 (CHoCH 反转 / BOS 延续);未失效 OB & FVG 的距离;trailing 区间内的 Premium / Discount 位置",
+        "output": "view + structure_bias_4h/1d + last_event_summary + key_levels + zone_4h/1d",
     },
 }
 

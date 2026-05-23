@@ -50,3 +50,6 @@ def test_build_returns_required_fields():
     assert "atr_12h" in pack["indicators"]
     assert "tags" in pack
     assert isinstance(pack["tags"], list)
+    assert "smc" in pack
+    assert "4h" in pack["smc"]
+    assert "1d" in pack["smc"]

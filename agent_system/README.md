@@ -1,11 +1,11 @@
 # Agent Team 量化分析系统
 
-币安 U 本位永续合约智能体分析系统 — 11 位分析师圆桌辩论 + 经验复盘。
+币安 U 本位永续合约智能体分析系统 — 12 位分析师圆桌辩论 + 经验复盘。
 
 > 设计文档：`docs/superpowers/specs/2026-05-16-agent-team-design.md`
 > 实施记录：`docs/superpowers/plans/2026-05-16-agent-team-system.md`
 
-## 11 位分析师团队
+## 12 位分析师团队
 
 | 中文角色 | mate_id | 职责 |
 |---|---|---|
@@ -14,6 +14,7 @@
 | 大户雷达 | smart_money | 大户持仓比 + OI 增长 + 主买卖 |
 | 多空裁 | long_short_compare | 大户 vs 全市场多空比背离 |
 | 波动官 | volatility | ATR 比值 + 布林带带宽分位 |
+| 结构师 | smc_structure | SMC 结构 (BOS/CHoCH/OB/FVG/EQH-EQL/Premium-Discount) |
 | 复盘官 | experience | 检索经验库历史样本 (默认停用) |
 | 投资风险师 | red_team | 列举风险路径 + 反驳多数派 |
 | 宏观官 | macro_sentiment | BTC 主导率 + 大盘 regime |
@@ -58,8 +59,8 @@ python -m agent_system.start
 - **左侧** 最近决策列表
 - **中间** 对话界面 — 输入"帮我分析 ETH"即可发起圆桌
 - **右侧** 可拖动宽度,顶部双 tab:
-  - **辩论流** — 11 位分析师每位的卡片,点击展开看完整 JSON
-  - **分析师团队** — 11 位的职责/关注/信号/输出说明
+  - **辩论流** — 12 位分析师每位的卡片,点击展开看完整 JSON
+  - **分析师团队** — 12 位的职责/关注/信号/输出说明
 
 支持多轮对话:决策出来后,可继续追问 "你们有几个分析师?各自结论?为什么?有什么风险?",会基于真实 audit 数据自然回答。
 
@@ -69,7 +70,7 @@ python -m agent_system.start
 # 跑单个分析师
 python -m agent_system.cli dry_run --symbol ETHUSDT --mate trend_multi_tf
 
-# 跑完整 11 Mate 三轮辩论
+# 跑完整 12 Mate 三轮辩论
 python -m agent_system.cli dry_run --symbol ETHUSDT --mode full
 
 # 跑 lean 模式(2 轮,更省 token)
@@ -89,7 +90,7 @@ python -m agent_system.cli.check_ready
 
 | 模式 | 触发 | Mate 集 | 轮数 |
 |---|---|---|---|
-| `chat` | 用户 web 对话 | full (11 位) | 3 |
+| `chat` | 用户 web 对话 | full (12 位) | 3 |
 | `scan` | 30 分钟定时扫描全市场 top 候选 | lean (7 位) | 2 |
 | `tracking` | 15 分钟跟踪已开仓位 | tracking (7 位) | 2 |
 
@@ -117,7 +118,7 @@ python -m agent_system.cli.check_ready
 2. 按 `tags` 分组(如 `funding=normal + smart_money=normal + volatility=compressed`)
 3. 对每组:
    - 重新拉决策期间的真实 K 线,算 **MFE/MAE/path_shape/time_to_close**
-   - 从 audit JSON 提取 11 位分析师当时各自的 view+confidence
+   - 从 audit JSON 提取 12 位分析师当时各自的 view+confidence
    - 喂给 LLM 做归因:哪些分析师在该场景可信、哪些误导、止损是否过紧、是否假突破
    - 输出 `lesson` 追加到经验库(带日期 + 样本统计)
 4. 新组样本不足 3 条时跳过,避免单样本噪声
@@ -148,8 +149,8 @@ agent_system/
 │   ├── audit_logger.py  # 审计 JSON 落盘
 │   ├── audit_reader.py  # 提取 audit 中各 Mate round-1 view
 │   └── decision_metrics.py  # MFE/MAE/path_shape 复盘指标
-├── mates/               # 11 位分析师 + 中文名映射
-├── prompts/             # 11 份 prompt 模板 + _shared
+├── mates/               # 12 位分析师 + 中文名映射
+├── prompts/             # 12 份 prompt 模板 + _shared
 ├── runners/             # chat / scan / tracking / status_tracker / retrospective
 ├── data/                # SQLite + binance + decisions/chat/tracking/experiences store
 ├── web/                 # Flask + SSE + chat.html (三栏布局可拖动)

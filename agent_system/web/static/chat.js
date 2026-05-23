@@ -82,6 +82,7 @@ const MATE_DISPLAY = {
   "liquidity": "水位官",
   "position_mgr": "仓位管家",
   "decision_lead": "决策长",
+  "smc_structure": "结构师",
 };
 function mateName(id) { return MATE_DISPLAY[id] || id; }
 

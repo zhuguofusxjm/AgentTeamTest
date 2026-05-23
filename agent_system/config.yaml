@@ -66,20 +66,26 @@ mates:
     temperature: 0.2
     enabled: true
     prompt_file: prompts/decision_lead.md
+  smc_structure:
+    model: deepseek-chat
+    temperature: 0.2
+    max_tokens: 1500
+    enabled: true
+    prompt_file: prompts/smc_structure.md
 
 modes:
   full:
     enabled_mates: [trend_multi_tf, funding_rate, smart_money,
                     long_short_compare, volatility, experience,
-                    macro_sentiment, liquidity, position_mgr]
+                    macro_sentiment, liquidity, smc_structure, position_mgr]
     rounds: 3
   lean:
     enabled_mates: [trend_multi_tf, funding_rate, smart_money,
-                    long_short_compare, position_mgr, experience]
+                    long_short_compare, smc_structure, position_mgr, experience]
     rounds: 2
   tracking:
     enabled_mates: [trend_multi_tf, funding_rate, smart_money,
-                    long_short_compare, position_mgr, experience]
+                    long_short_compare, smc_structure, position_mgr, experience]
     rounds: 2
 
 scheduler:

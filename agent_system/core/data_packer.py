@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from agent_system.core.smc import compute_smc
+
 def _parse_kline(raw):
     return {
         "open_time": raw[0],
@@ -165,4 +167,12 @@ def build(symbol: str, binance, peer_symbols: list = None) -> dict:
         "peer_funding": peer_funding,
     }
     pack["tags"] = _extract_tags(pack)
+    # SMC 结构预计算:对 4h 和 1d 各跑一次 compute_smc,
+    # 结果直接塞进 DataPack,结构师 mate 只需切这个字段即可。
+    # 如果 K 线数量不足(< swing_length + internal_length + 2),
+    # compute_smc 会返回 {"_status": "insufficient_data"},不会报错。
+    pack["smc"] = {
+        "4h": compute_smc(klines["4h"]),
+        "1d": compute_smc(klines["1d"]),
+    }
     return pack

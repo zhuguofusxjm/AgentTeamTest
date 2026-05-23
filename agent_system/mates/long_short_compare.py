@@ -3,7 +3,11 @@ from agent_system.core.data_slice import keep
 
 
 class LongShortCompareMate(BaseMate):
-    """多空对比 — 仅 3 个比率当前值,极简。"""
+    """多空对比 — 仅 3 个比率当前值,极简。
+
+    全团队最轻量的 mate(~800 token)。
+    只做一件事:量化大户 vs 散户的方向分歧程度。
+    """
 
     def select_fields(self, data_pack):
         sliced = keep(data_pack, [])

@@ -5,7 +5,11 @@ from agent_system.core.data_slice import keep, slim_klines
 class RedTeamMate(BaseMate):
     """蒋军 — 第 1 轮独立列风险 / 第 2 轮反驳多数派。
 
-    需要看到 raw 数据找漏洞,但只要近期。
+    需要看到较全面的 raw 数据来找漏洞(费率/指标/成交量/持仓/K线),
+    但仍做了裁剪(各周期只保留近期)。
+    双模式:
+    - Round 1: 独立列出 3 条风险路径 + counterview
+    - Round 2: 拿到所有 mate 输出,反驳多数派核心论据
     """
 
     def select_fields(self, data_pack):
@@ -23,6 +27,7 @@ class RedTeamMate(BaseMate):
 
     def run_rebuttal(self, data_pack: dict, round_1_reports: list, majority_view: str,
                      audit_logger=None, audit_id=None):
+        """Round 2 反驳模式:注入所有 mate 报告 + 多数派方向,让 LLM 逐条反驳。"""
         extra = {
             "round_1_reports_json": round_1_reports,
             "majority_view": majority_view,

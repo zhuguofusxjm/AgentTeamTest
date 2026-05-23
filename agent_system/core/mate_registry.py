@@ -18,6 +18,7 @@ def register_mate_classes():
     from agent_system.mates.liquidity import LiquidityMate
     from agent_system.mates.position_mgr import PositionMgrMate
     from agent_system.mates.decision_lead import DecisionLeadMate
+    from agent_system.mates.smc_structure import SmcStructureMate
     MATE_CLASSES.update({
         "trend_multi_tf": TrendMultiTfMate,
         "funding_rate": FundingRateMate,
@@ -30,6 +31,7 @@ def register_mate_classes():
         "liquidity": LiquidityMate,
         "position_mgr": PositionMgrMate,
         "decision_lead": DecisionLeadMate,
+        "smc_structure": SmcStructureMate,
     })
     return MATE_CLASSES
 
