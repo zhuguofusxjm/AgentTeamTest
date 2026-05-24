@@ -1,3 +1,4 @@
+"""OpenAI provider 占位 — 第一阶段不接,实例化即抛 NotImplementedError。"""
 from .base import BaseProvider
 
 

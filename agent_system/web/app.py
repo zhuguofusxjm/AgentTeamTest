@@ -20,8 +20,52 @@ def create_app(cfg, chat_runner, audit_dir, db_path):
 
     @app.route("/api/decisions")
     def list_decisions():
-        from agent_system.data.decisions_store import list_recent_decisions
-        return jsonify(list_recent_decisions(db_path, limit=50))
+        """决策列表(分页+多条件搜索)。"""
+        from agent_system.data.decisions_store import list_decisions_paginated
+        trigger_mode = request.args.get("trigger_mode") or None
+        symbol = request.args.get("symbol") or None
+        direction = request.args.get("direction") or None
+        status = request.args.get("status") or None
+        confidence_min = request.args.get("confidence_min")
+        confidence_min = int(confidence_min) if confidence_min else None
+        date_start = request.args.get("date_start") or None
+        date_end = request.args.get("date_end") or None
+        page = int(request.args.get("page", 1))
+        page_size = int(request.args.get("page_size", 20))
+        return jsonify(list_decisions_paginated(
+            db_path, page=page, page_size=page_size,
+            trigger_mode=trigger_mode, symbol=symbol,
+            direction=direction, status=status,
+            confidence_min=confidence_min,
+            date_start=date_start, date_end=date_end,
+        ))
+
+    @app.route("/api/status")
+    def system_status():
+        """顶部状态栏数据。
+
+        返回:
+        - decisions: 决策汇总统计(按 trigger_mode 分组 + open/win/loss)
+        - active_tracks: 活跃跟踪数
+        - dependencies: API 依赖健康(deepseek_key / binance_key 是否配好)
+        - server_time: 服务器当前时间
+        """
+        import os
+        from datetime import datetime
+        from agent_system.data.decisions_store import count_decisions_summary
+        from agent_system.data.tracking_store import get_active_tracks
+
+        deepseek_env = cfg.get("providers", {}).get("deepseek", {}).get("api_key_env", "")
+        binance_env = cfg.get("binance", {}).get("api_key_env", "")
+        return jsonify({
+            "decisions": count_decisions_summary(db_path),
+            "active_tracks": len(get_active_tracks(db_path)),
+            "dependencies": {
+                "deepseek_key": bool(os.environ.get(deepseek_env)) if deepseek_env else False,
+                "binance_key": bool(os.environ.get(binance_env)) if binance_env else False,
+            },
+            "server_time": datetime.now().isoformat(timespec="seconds"),
+        })
 
     @app.route("/api/team")
     def team():

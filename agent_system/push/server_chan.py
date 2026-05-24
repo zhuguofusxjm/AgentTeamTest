@@ -1,16 +1,29 @@
+"""Server酱 微信推送封装。
+
+通过 https://sct.ftqq.com 把决策卡片推到用户的微信。
+配置:env var SERVER_CHAN_KEY (类似 SCT-xxxxx)。
+未配置时静默禁用,不影响其他流程。
+
+冷却机制:scan 推送应用 per-symbol 冷却(默认 240 分钟),
+避免同一币种短时间内重复打扰;tracking / chat 不冷却。
+"""
 import os
 import time
 import requests
 
 
 class ServerChanPush:
+    """Server酱推送客户端,带 per-symbol 冷却。"""
+
     def __init__(self, send_key_env: str = "SERVER_CHAN_KEY", cooldown_min: int = 240):
         self.send_key = os.environ.get(send_key_env, "")
+        # 没配置 SEND_KEY 就自动禁用,不抛错
         self.enabled = bool(self.send_key)
         self.cooldown_sec = max(0, int(cooldown_min)) * 60
-        self._last_push = {}  # symbol -> epoch sec
+        self._last_push = {}  # symbol -> 上次推送时间戳
 
     def _post(self, title: str, desp: str):
+        """实际发请求。Server酱 title 限 32 字、desp 限 32K。"""
         if not self.enabled:
             print(f"[push] disabled (no SEND_KEY); title={title}")
             return
@@ -18,19 +31,26 @@ class ServerChanPush:
         try:
             requests.post(url, data={"title": title[:32], "desp": desp[:32000]}, timeout=15)
         except Exception as e:
+            # 推送失败不影响主流程
             print(f"[push] failed: {e}")
 
     def _within_cooldown(self, symbol: str) -> bool:
+        """该 symbol 是否在冷却窗口内。"""
         if self.cooldown_sec <= 0 or not symbol:
             return False
         last = self._last_push.get(symbol, 0)
         return (time.time() - last) < self.cooldown_sec
 
     def _mark_pushed(self, symbol: str):
+        """记录该 symbol 的推送时间,启动新一轮冷却。"""
         if symbol:
             self._last_push[symbol] = time.time()
 
     def _format_card(self, card: dict) -> str:
+        """决策卡片 → markdown 文本(微信里渲染)。
+
+        观望卡片简化版(没有数值字段),其他方向打全卡片。
+        """
         if card.get("direction") == "观望":
             return (f"### {card.get('symbol')} 观望\n\n"
                     f"**Confidence:** {card.get('confidence', 0)}\n\n"
@@ -53,13 +73,16 @@ class ServerChanPush:
         """Scan 推送应用 per-symbol 冷却,避免同一币种短时间内重复打扰。"""
         if not cards:
             return
+        # 过滤掉冷却期内的 symbol
         fresh = [c for c in cards if not self._within_cooldown(c.get("symbol"))]
         if not fresh:
             print(f"[push] all {len(cards)} scan symbols in cooldown, skip")
             return
         title = f"扫描决策 {len(fresh)} 个"
+        # 多张卡片用 --- 分隔成 markdown 段落
         desp = "\n\n---\n\n".join(self._format_card(c) for c in fresh)
         self._post(title, desp)
+        # 标记 fresh 中的每个 symbol 为已推送(开始新冷却窗口)
         for c in fresh:
             self._mark_pushed(c.get("symbol"))
 

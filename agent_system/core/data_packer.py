@@ -1,8 +1,20 @@
+"""DataPack 构造器 — 一次性从 Binance 拉全 12 位分析师所需数据。
+
+设计思想:Mate 各看各的字段,但底层数据只拉一次,通过 select_fields 切片给每个 mate。
+这样一次决策对外发起的 API 调用是固定 ~10 次,而不是 12 mate × N 次。
+
+输出 pack 结构见 prompts/_shared/data_pack_format.md。
+"""
 from datetime import datetime, timezone
 
 from agent_system.core.smc import compute_smc
 
 def _parse_kline(raw):
+    """把 Binance K 线 list 格式转成 dict(更易读)。
+
+    Binance 返回的是数组:[open_time, open, high, low, close, volume,
+    close_time, quote_volume, trades, taker_buy_volume, taker_buy_quote_volume, ignore]。
+    """
     return {
         "open_time": raw[0],
         "open": float(raw[1]),
@@ -18,6 +30,11 @@ def _parse_kline(raw):
     }
 
 def calc_atr(klines: list, period: int = 12) -> float:
+    """计算 ATR(Average True Range)= 平均真实波幅。
+
+    True Range = max(高低差, |当日高-前日收|, |当日低-前日收|)。
+    取最近 period 根的均值。波动率指标,用于止损距离设置。
+    """
     if len(klines) < 2:
         return 0.0
     trs = []
@@ -31,6 +48,11 @@ def calc_atr(klines: list, period: int = 12) -> float:
     return sum(use) / len(use) if use else 0.0
 
 def calc_bb_width(closes: list, period: int = 20, std_mult: float = 2.0) -> float:
+    """计算布林带带宽(归一化为占均值的比例)。
+
+    带宽 = (upper - lower) / mean = 2 * std_mult * std / mean。
+    带宽越窄表示波动收敛,越宽表示在剧烈震荡。
+    """
     if len(closes) < period:
         return 0.0
     window = closes[-period:]
@@ -42,6 +64,7 @@ def calc_bb_width(closes: list, period: int = 20, std_mult: float = 2.0) -> floa
     return (upper - lower) / mean if mean else 0.0
 
 def calc_ema(closes: list, period: int) -> float:
+    """指数移动均线。k = 2/(period+1),从首根 close 起递推。"""
     if not closes:
         return 0.0
     k = 2 / (period + 1)
@@ -51,6 +74,12 @@ def calc_ema(closes: list, period: int) -> float:
     return ema
 
 def _bb_width_pct_rank(closes: list, period: int, lookback: int = 100) -> float:
+    """当前带宽在最近 lookback 根中的百分位(0-100)。
+
+    < 25 表示带宽极窄(历史性压缩 → 蓄力),
+    > 75 表示带宽极宽(已扩张 → 突破已发生)。
+    数据不足时返回 50(中性)。
+    """
     if len(closes) < period + lookback:
         return 50.0
     widths = []
@@ -62,7 +91,13 @@ def _bb_width_pct_rank(closes: list, period: int, lookback: int = 100) -> float:
     return 100.0 * rank / len(widths)
 
 def _extract_tags(pack: dict) -> list:
+    """从 pack 提取场景标签,用于经验库匹配 + 复盘归类。
+
+    每个维度归到 normal / extreme_high / extreme_low / compressed / expanding 等离散桶,
+    这样复盘官能用 "funding=extreme_high + smart_money=normal" 这种组合匹配历史。
+    """
     tags = []
+    # 资金费率:绝对值阈值 0.0010 区分极端 vs 正常
     funding_now = pack["funding"]["current"]
     if funding_now > 0.0010:
         tags.append("funding=extreme_high")
@@ -71,6 +106,7 @@ def _extract_tags(pack: dict) -> list:
     else:
         tags.append("funding=normal")
 
+    # 大户持仓比:2.5 / 0.4 是历史经验阈值
     top_pos = pack["positions"]["top_position_ratio_now"]
     if top_pos > 2.5:
         tags.append("smart_money=extreme_long")
@@ -79,6 +115,7 @@ def _extract_tags(pack: dict) -> list:
     else:
         tags.append("smart_money=normal")
 
+    # 波动率:用 BB 带宽的百分位分桶
     bb_pct = pack["indicators"]["bb_width_pct"]
     if bb_pct < 25:
         tags.append("volatility=compressed")
@@ -89,6 +126,13 @@ def _extract_tags(pack: dict) -> list:
     return tags
 
 def build(symbol: str, binance, peer_symbols: list = None) -> dict:
+    """构造一份完整 DataPack。
+
+    一次性拉取所有 12 位 mate 需要的数据,通过 mate.select_fields() 切片下发。
+    K 线长度按"够用"原则:1h=168(1 周)、4h=180(1 月)、1d=180(半年)、1w=104(2 年)。
+    OI / 大户多空比 / 全市场多空比都用 1h × 180 根(7.5 天历史)。
+    """
+    # ===== 拉 4 周期 K 线 =====
     klines_raw = {
         "1h": binance.get_klines(symbol, interval="1h", limit=168),
         "4h": binance.get_klines(symbol, interval="4h", limit=180),
@@ -97,11 +141,13 @@ def build(symbol: str, binance, peer_symbols: list = None) -> dict:
     }
     klines = {tf: [_parse_kline(r) for r in raw] for tf, raw in klines_raw.items()}
 
+    # ===== 资金费率(当前 + 历史 + 上下限) =====
     funding_history = binance.get_funding_rate_history(symbol, limit=90)
     funding_info_all = binance.get_funding_info()
     finfo = next((f for f in funding_info_all if f.get("symbol") == symbol), {})
     funding_now = float(funding_history[-1]["fundingRate"]) if funding_history else 0.0
 
+    # ===== 持仓量 + 三种多空比(都用 1h × 180 根) =====
     oi = binance.get_open_interest_hist(symbol, period="1h", limit=180)
     top_pos = binance.get_top_long_short_position_ratio(symbol, period="1h", limit=180)
     top_acc = binance.get_top_long_short_account_ratio(symbol, period="1h", limit=180)

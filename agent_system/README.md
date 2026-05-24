@@ -56,11 +56,14 @@ python -m agent_system.start
 
 打开 http://localhost:5000:
 
-- **左侧** 最近决策列表
-- **中间** 对话界面 — 输入"帮我分析 ETH"即可发起圆桌
-- **右侧** 可拖动宽度,顶部双 tab:
-  - **辩论流** — 12 位分析师每位的卡片,点击展开看完整 JSON
-  - **分析师团队** — 12 位的职责/关注/信号/输出说明
+- **顶部** 系统状态栏:运行状态 / 决策统计 / 活跃跟踪数 / 分析师团队介绍按钮
+- **中部** 决策列表:
+  - 过滤 tab(全部/扫描/对话/跟踪)
+  - 搜索栏(日期范围/币种/方向/信心/状态)
+  - 表格(时间/币种/类型/方向/详情/信心/状态/辩论流)
+  - 分页(每页 20 条)
+- **右侧抽屉** 辩论流:点击"辩论流"按钮滑出,回放 12 位分析师每轮输出
+- **右下角** AI 聊天面板:默认收起,点击 💬 展开;输入"帮我分析 ETH"发起圆桌
 
 支持多轮对话:决策出来后,可继续追问 "你们有几个分析师?各自结论?为什么?有什么风险?",会基于真实 audit 数据自然回答。
 
@@ -91,8 +94,27 @@ python -m agent_system.cli.check_ready
 | 模式 | 触发 | Mate 集 | 轮数 |
 |---|---|---|---|
 | `chat` | 用户 web 对话 | full (12 位) | 3 |
-| `scan` | 30 分钟定时扫描全市场 top 候选 | lean (7 位) | 2 |
-| `tracking` | 15 分钟跟踪已开仓位 | tracking (7 位) | 2 |
+| `scan` | 4h 定时扫描全市场 top 候选 | lean (7 位) | 2 |
+| `tracking` | 1h 跟踪已开仓位 | tracking (7 位) | 2 |
+
+### Scan 候选预筛("先大后偏")
+
+1. **第一层(体量)**: 全市场 USDT 永续按 24h 成交额倒序,取 Top 30
+2. **第二层(五类极端)** 在 Top 30 里各取 10:
+   - 资金费率最极端(拥挤)
+   - 大户多空比最极端(站队)
+   - 24h 涨跌幅最大(动量)
+   - OI 增长率最高(资金涌入)
+   - 成交量异动(24h vs 7d 均值)
+3. 五类并集去重 → 截到 `scan_max_candidates`(默认 10)进圆桌
+
+### 决策胜负判定
+
+逐根 1h K 线按时间顺序扫描,**先触发者为准**:
+- 多头:某根 low ≤ SL → loss;某根 high ≥ TP → win
+- 空头:某根 high ≥ SL → loss;某根 low ≤ TP → win
+- 同一根内 SL/TP 都触发 → 保守判 loss(无法确定 tick 级先后)
+- 7 天内都没触发 → expired,按最终 close 结算
 
 每次决策都会:
 1. 落盘 audit JSON 到 `tracks/decision_<symbol>_<ts>.json`
@@ -105,9 +127,9 @@ python -m agent_system.cli.check_ready
 
 | 循环 | 频率 | 用途 |
 |---|---|---|
-| scan_loop | 30min | 扫描候选币种,产出决策推送 |
-| tracking_loop | 15min | 跟踪已开仓位,触发出场建议 |
-| status_loop | 1h | 检查 open 决策有无触发 SL/TP/超时 |
+| scan_loop | 4h | 扫描候选币种(5 维预筛),产出决策推送 |
+| tracking_loop | 1h | 跟踪已开仓位,触发出场建议 |
+| status_loop | 1h | 逐根 K 线判定 open 决策有无触发 SL/TP/超时 |
 | retro_loop | 凌晨 3 点 | 按场景 tag 分组复盘已结决策,沉淀经验 |
 
 ## 复盘怎么工作
@@ -153,10 +175,11 @@ agent_system/
 ├── prompts/             # 12 份 prompt 模板 + _shared
 ├── runners/             # chat / scan / tracking / status_tracker / retrospective
 ├── data/                # SQLite + binance + decisions/chat/tracking/experiences store
-├── web/                 # Flask + SSE + chat.html (三栏布局可拖动)
+├── web/                 # Flask + SSE (上中下布局 + 搜索 + 分页 + 辩论流抽屉)
 ├── push/                # Server酱 推送
 ├── cli/                 # python -m agent_system.cli ...
-└── tests/               # 79 个 pytest 用例
+├── scripts/             # 一次性修正脚本 (fix_decision_status.py)
+└── tests/               # 101 个 pytest 用例
 ```
 
 ## Token 用量 (deepseek-chat)
@@ -176,4 +199,4 @@ agent_system/
 pytest agent_system/tests/ -v
 ```
 
-当前 79 个用例,覆盖配置/数据库/Mate base/编排/路由/扫描/跟踪/复盘/对话。
+当前 101 个用例,覆盖配置/数据库/Mate base/编排/路由/扫描预筛/跟踪/复盘/对话/SMC。
