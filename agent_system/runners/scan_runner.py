@@ -156,7 +156,7 @@ class ScanRunner:
             )[:limit]
         except Exception as e:
             print(f"[scan] prefilter failed: {e}; fallback")
-            return ["BTCUSDT", "ETHUSDT"]
+            return [{"symbol": "BTCUSDT", "dims": []}, {"symbol": "ETHUSDT", "dims": []}]
 
     def run_once(self) -> list:
         """执行一轮扫描:挑候选 → 逐个跑 lean 圆桌 → 入库 → 推送 top 5。
@@ -167,7 +167,9 @@ class ScanRunner:
         candidates = self._candidates()
         print(f"[scan] candidates: {candidates}")
         cards = []
-        for symbol in candidates:
+        for item in candidates:
+            symbol = item["symbol"] if isinstance(item, dict) else item
+            dims = item.get("dims", []) if isinstance(item, dict) else []
             try:
                 # 每个候选都拉一份完整 DataPack,跑 lean 模式(7 mate, 2 轮)
                 pack = self.build_pack(symbol, binance=self.binance, peer_symbols=["BTCUSDT"])
@@ -178,7 +180,8 @@ class ScanRunner:
                 # 这样前端 /api/debate/<id> 才能调出 12 位分析师的辩论流
                 audit_path = card.get("audit_path") or ""
                 did = save_decision(self.db_path, symbol=symbol, trigger_mode="scan",
-                                    card=card, tags=tags, audit_path=audit_path)
+                                    card=card, tags=tags, audit_path=audit_path,
+                                    prefilter_tags=dims if dims else None)
                 card["decision_id"] = did
                 cards.append(card)
             except Exception as e:
