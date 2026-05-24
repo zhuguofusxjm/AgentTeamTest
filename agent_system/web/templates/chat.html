@@ -6,35 +6,113 @@
   <link rel="stylesheet" href="/static/chat.css">
 </head>
 <body>
-  <div class="layout">
-    <main class="center">
-      <div id="messages"></div>
-      <form id="chat-form">
-        <input id="chat-input" placeholder="例: 帮我分析 ETH 是否有买卖点" autocomplete="off">
-        <button type="submit">发送</button>
-      </form>
-    </main>
-    <div class="splitter" id="splitter"></div>
-    <aside class="right" id="right-panel">
-      <div class="right-tabs">
-        <button class="tab-btn active" data-tab="debate">辩论流</button>
-        <button class="tab-btn" data-tab="team">分析师团队</button>
+  <!-- ===== 顶部状态栏 ===== -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo">Agent Team</span>
+      <span id="sys-status" class="status-badge"></span>
+    </div>
+    <div class="topbar-center" id="topbar-stats"></div>
+    <div class="topbar-right">
+      <button id="team-btn" class="topbar-btn">分析师团队</button>
+    </div>
+  </header>
+
+  <!-- ===== 中间主体 ===== -->
+  <main class="main-content">
+    <!-- 过滤栏 -->
+    <div class="filter-bar">
+      <div class="filter-tabs">
+        <button class="filter-tab active" data-trigger="">全部</button>
+        <button class="filter-tab" data-trigger="scan">扫描</button>
+        <button class="filter-tab" data-trigger="chat">对话</button>
+        <button class="filter-tab" data-trigger="tracking">跟踪</button>
       </div>
-      <div id="tab-debate" class="tab-pane active">
-        <div id="debate-stream"></div>
+    </div>
+
+    <!-- 搜索栏 -->
+    <div class="search-bar">
+      <input type="date" id="search-date-start" title="开始日期">
+      <span class="search-sep">~</span>
+      <input type="date" id="search-date-end" title="结束日期">
+      <input type="text" id="search-symbol" placeholder="币种" class="search-input">
+      <select id="search-direction" class="search-select">
+        <option value="">方向</option>
+        <option value="多">多</option>
+        <option value="空">空</option>
+        <option value="观望">观望</option>
+      </select>
+      <input type="number" id="search-confidence" placeholder="信心≥" min="0" max="100" class="search-input search-narrow">
+      <select id="search-status" class="search-select">
+        <option value="">状态</option>
+        <option value="open">open</option>
+        <option value="win">win</option>
+        <option value="loss">loss</option>
+        <option value="expired">expired</option>
+      </select>
+      <button id="search-btn" class="search-go">搜索</button>
+      <button id="search-reset" class="search-reset">重置</button>
+    </div>
+
+    <!-- 决策表格 -->
+    <div class="table-wrap">
+      <table class="dec-table">
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>币种</th>
+            <th>预选</th>
+            <th>类型</th>
+            <th>方向</th>
+            <th>详情</th>
+            <th>信心</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="dec-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- 分页 -->
+    <div class="pagination" id="pagination"></div>
+  </main>
+
+  <!-- ===== 右侧辩论流抽屉 ===== -->
+  <aside class="debate-drawer" id="debate-drawer">
+    <div class="drawer-header">
+      <span class="drawer-title" id="debate-title">辩论流</span>
+      <button class="drawer-close" id="debate-close">&times;</button>
+    </div>
+    <div class="drawer-body" id="debate-stream"></div>
+  </aside>
+  <div class="drawer-overlay" id="debate-overlay"></div>
+
+  <!-- ===== 分析师团队 Modal ===== -->
+  <div class="modal-overlay" id="team-overlay">
+    <div class="modal" id="team-modal">
+      <div class="modal-header">
+        <span>12 位分析师团队</span>
+        <button class="modal-close" id="team-close">&times;</button>
       </div>
-      <div id="tab-team" class="tab-pane">
-        <div id="team-list"></div>
-      </div>
-    </aside>
-    <button id="drawer-toggle" title="最近决策">最近决策</button>
-    <aside class="drawer" id="drawer">
-      <h3>当前跟踪</h3>
-      <ul id="tracks-list"></ul>
-      <h3 style="margin-top:18px">最近决策</h3>
-      <ul id="decisions-list"></ul>
-    </aside>
+      <div class="modal-body" id="team-list"></div>
+    </div>
   </div>
+
+  <!-- ===== 右下角 AI 聊天面板 ===== -->
+  <button class="chat-toggle" id="chat-toggle" title="AI 对话">💬</button>
+  <aside class="chat-panel" id="chat-panel">
+    <div class="chat-panel-header">
+      <span>AI 对话</span>
+      <button class="chat-panel-close" id="chat-panel-close">&times;</button>
+    </div>
+    <div class="chat-panel-body" id="messages"></div>
+    <form id="chat-form" class="chat-panel-form">
+      <input id="chat-input" placeholder="例: 帮我分析 ETH 是否有买卖点" autocomplete="off">
+      <button type="submit">发送</button>
+    </form>
+  </aside>
+
   <script src="/static/chat.js"></script>
 </body>
 </html>
