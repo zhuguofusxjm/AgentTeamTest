@@ -131,6 +131,12 @@ def list_decisions_paginated(db_path, page: int = 1, page_size: int = 20,
                     d["card"] = json.loads(cj)
                 except Exception:
                     d["card"] = None
+            pt = d.get("prefilter_tags")
+            if pt:
+                try:
+                    d["prefilter_tags"] = json.loads(pt)
+                except Exception:
+                    d["prefilter_tags"] = None
             items.append(d)
         total_pages = (total + page_size - 1) // page_size if total else 0
         return {
