@@ -27,10 +27,16 @@ def test_prefilter_combines_top_volume_funding_and_position():
     candidates = _prefilter_by_volume_and_extremes(
         binance=binance, top_volume=4, top_funding=2, top_position_dev=2,
     )
+    assert isinstance(candidates, list)
     symbols = [c["symbol"] for c in candidates]
     assert "BUSDT" in symbols  # 极端费率
     assert "CUSDT" in symbols  # 极端多空比
     assert "DUSDT" not in symbols  # 体量太小
+
+    busdt = next(c for c in candidates if c["symbol"] == "BUSDT")
+    assert "funding" in busdt["dims"]
+    cusdt = next(c for c in candidates if c["symbol"] == "CUSDT")
+    assert "position" in cusdt["dims"]
 
 
 def test_prefilter_picks_price_momentum_oi_growth_and_volume_anomaly():
@@ -74,8 +80,16 @@ def test_prefilter_picks_price_momentum_oi_growth_and_volume_anomaly():
         top_price_change=2, top_oi_growth=2, top_volume_anomaly=2,
     )
 
+    assert isinstance(candidates, list)
     symbols = [c["symbol"] for c in candidates]
     assert "BUSDT" in symbols  # 涨幅极端
     assert "CUSDT" in symbols  # OI 增长极端
     assert "EUSDT" in symbols  # 成交量异动极端
+
+    busdt = next(c for c in candidates if c["symbol"] == "BUSDT")
+    assert "price" in busdt["dims"]
+    cusdt = next(c for c in candidates if c["symbol"] == "CUSDT")
+    assert "oi_growth" in cusdt["dims"]
+    eusdt = next(c for c in candidates if c["symbol"] == "EUSDT")
+    assert "volume_anomaly" in eusdt["dims"]
 
