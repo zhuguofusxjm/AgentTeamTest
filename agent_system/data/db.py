@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS decisions (
 """
 DDL_DECISIONS_IDX_SYMBOL = "CREATE INDEX IF NOT EXISTS idx_dec_symbol ON decisions(symbol)"
 DDL_DECISIONS_IDX_STATUS = "CREATE INDEX IF NOT EXISTS idx_dec_status ON decisions(status)"
+DDL_MIGRATE_PREFILTER_TAGS = """
+ALTER TABLE decisions ADD COLUMN prefilter_tags TEXT
+"""
 
 DDL_EXPERIENCES = """
 CREATE TABLE IF NOT EXISTS experiences (
@@ -90,6 +93,9 @@ def init_new_tables(db_path: str):
         conn.execute(DDL_DECISIONS)
         conn.execute(DDL_DECISIONS_IDX_SYMBOL)
         conn.execute(DDL_DECISIONS_IDX_STATUS)
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(decisions)").fetchall()}
+        if "prefilter_tags" not in existing:
+            conn.execute(DDL_MIGRATE_PREFILTER_TAGS)
         conn.execute(DDL_EXPERIENCES)
         conn.execute(DDL_EXPERIENCES_IDX)
         conn.execute(DDL_CHAT_MESSAGES)
